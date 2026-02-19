@@ -2,7 +2,7 @@
 -- The cooldown endpoint queries: WHERE bot_id = $1 AND activity_type = 'order_placed' ORDER BY created_at DESC
 -- Without this composite index, the query does a full table scan
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_bot_activities_cooldown 
+CREATE INDEX IF NOT EXISTS idx_bot_activities_cooldown 
 ON bot_activities(bot_id, activity_type, created_at DESC);
 
 -- This index covers the exact query pattern and can:

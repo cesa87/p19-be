@@ -355,7 +355,7 @@ impl Orchestrator {
                 COALESCE(b.auto_disabled, false) as auto_disabled,
                 s.strategy_type,
                 s.profile,
-                s.params->>'instrument' as instrument
+                COALESCE(s.params->>'instrument', s.params->>'symbol') as instrument
             FROM bots b
             JOIN strategies s ON b.strategy_id = s.id
             ORDER BY b.name
@@ -920,7 +920,7 @@ impl Orchestrator {
                 b.is_active,
                 s.strategy_type,
                 s.params->>'timeframe' as timeframe,
-                s.params->>'instrument' as instrument,
+                COALESCE(s.params->>'instrument', s.params->>'symbol') as instrument,
                 s.mrate_category
             FROM bots b
             JOIN strategies s ON b.strategy_id = s.id

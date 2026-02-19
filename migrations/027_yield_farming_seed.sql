@@ -105,4 +105,5 @@ SELECT id, 'upgrade', 'info', 'Protocol Upgrade v2.0', 'Upgraded to v2.0 with im
 FROM yield_protocols WHERE name = 'Kamino Finance';
 
 INSERT INTO protocol_events (protocol_id, event_type, severity, title, description, event_at)
-SELECT id, 'tvl_milestone', 'info', 'TVL Milestone', 'Total Value Locked surp
+SELECT id, 'tvl_milestone', 'info', 'TVL Milestone', 'Total Value Locked surpassed $1B', NOW() - INTERVAL '7 days'
+FROM yield_protocols WHERE name = 'Jito';
