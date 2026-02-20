@@ -246,6 +246,28 @@ impl BotManager {
     }
 }
 
+/// Timeframe tier for MRATE integration gating
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum TimeframeTier {
+    /// M1, M5, M15 — no hard directional bias, local ATR stops, larger lots
+    Intraday,
+    /// H1, H4, D1 — D1 directional bias enforced, D1 ATR stops allowed
+    Swing,
+}
+
+impl TimeframeTier {
+    fn from_timeframe(tf: &str) -> Self {
+        match tf {
+            "M1" | "M5" | "M15" | "M30" => TimeframeTier::Intraday,
+            _ => TimeframeTier::Swing, // H1, H4, D1, W1
+        }
+    }
+    
+    fn is_intraday(&self) -> bool {
+        matches!(self, TimeframeTier::Intraday)
+    }
+}
+
 /// The actual bot runner that executes trades
 pub struct BotRunner {
     pub bot_id: Uuid,
@@ -495,59 +517,160 @@ impl BotRunner {
             };
             
             if should_trade && signal_result.confidence >= 0.6 {
-                // MRATE filtering - check if regime allows this strategy type
-                // Now uses direction-aware logic with per-instrument overrides
+                // ═══════════════════════════════════════════════════════════════════
+                // TIMEFRAME-AWARE MRATE FILTERING
+                // Intraday (M5/M15): no hard blocking, soft lot reduction on counter-trend
+                // Swing (H1+): full directional bias enforcement from D1 trend
+                // ═══════════════════════════════════════════════════════════════════
+                let tf_tier = TimeframeTier::from_timeframe(&self.timeframe);
                 let mut mrate_lot_multiplier = 1.0;
                 let mrate_output = self.fetch_mrate().await.unwrap_or_else(default_mrate_output);
                 if let Some(category) = self.mrate_category {
-                    // Determine trade direction from signal
                     let direction = match signal_result.signal {
                         Signal::Buy => Some("LONG"),
                         Signal::Sell => Some("SHORT"),
                         Signal::Hold => None,
                     };
                     
-                    // Use the new direction-aware method with per-instrument overrides
-                    let (allowed, adjusted_weight, reason) = mrate_output.should_trade_instrument(
-                        category,
-                        instrument,
-                        direction,
-                    );
-                    
-                    if !allowed {
-                        let _ = log_activity(&self.pool, self.bot_id, ActivityType::Info,
-                            &format!("📊 MRATE blocked: {} | {}", 
-                                mrate_output.regime.as_str(), reason), 
-                            Some(serde_json::json!({
-                                "mrate_regime": mrate_output.regime.as_str(),
-                                "category": category.as_str(),
-                                "base_weight": mrate_output.strategy_weights.get(category),
-                                "adjusted_weight": adjusted_weight,
-                                "direction": direction,
-                                "instrument": instrument,
-                                "reason": reason,
-                                "risk_multiplier": mrate_output.risk_multiplier,
-                            }))).await;
-                        continue;
-                    }
-                    
-                    // Apply MRATE adjustments using the adjusted weight
-                    mrate_lot_multiplier = mrate_output.risk_multiplier * adjusted_weight;
-                    tracing::info!(
-                        "MRATE: regime={}, category={:?}, adjusted_weight={:.0}%, lot_mult={:.2}x | {}",
-                        mrate_output.regime.as_str(), category, adjusted_weight * 100.0, mrate_lot_multiplier, reason
-                    );
-                    
-                    // Log when override or boost was applied
-                    if adjusted_weight > mrate_output.strategy_weights.get(category) {
-                        let _ = log_activity(&self.pool, self.bot_id, ActivityType::Info,
-                            &format!("✨ MRATE override: {}", reason), 
-                            Some(serde_json::json!({
-                                "base_weight": mrate_output.strategy_weights.get(category),
-                                "boosted_weight": adjusted_weight,
-                                "instrument": instrument,
-                                "direction": direction,
-                            }))).await;
+                    if tf_tier.is_intraday() {
+                        // ── INTRADAY: Never block, only adjust lot size ──
+                        // Get the instrument's D1 trading direction for soft filtering
+                        let inst_score = mrate_output.instrument_scores.get_score(instrument);
+                        let d1_direction = inst_score.map(|s| s.trading_direction);
+                        
+                        let direction_opposes = match (direction, d1_direction) {
+                            (Some("LONG"), Some(crate::mrate::models::TradingDirection::Short)) => true,
+                            (Some("SHORT"), Some(crate::mrate::models::TradingDirection::Long)) => true,
+                            _ => false,
+                        };
+                        
+                        if direction_opposes {
+                            // Counter-trend intraday: reduce lots by 50%, don't block
+                            mrate_lot_multiplier = 0.5 * mrate_output.risk_multiplier;
+                            let _ = log_activity(&self.pool, self.bot_id, ActivityType::Info,
+                                &format!("⚡ Intraday counter-D1: {} on {} — lot reduced 50%",
+                                    direction.unwrap_or("?"), instrument),
+                                Some(serde_json::json!({
+                                    "tier": "intraday",
+                                    "timeframe": self.timeframe,
+                                    "d1_direction": format!("{:?}", d1_direction),
+                                    "signal_direction": direction,
+                                    "lot_multiplier": mrate_lot_multiplier,
+                                }))).await;
+                        } else {
+                            // Aligned or neutral: use risk multiplier only (no category weight penalty)
+                            mrate_lot_multiplier = mrate_output.risk_multiplier;
+                        }
+                        
+                        tracing::info!(
+                            "MRATE [INTRADAY {}]: regime={}, lot_mult={:.2}x, counter_trend={}",
+                            self.timeframe, mrate_output.regime.as_str(), mrate_lot_multiplier, direction_opposes
+                        );
+                    } else {
+                        // ── SWING (H1+): MANDATORY D1 direction check ──
+                        // Step 1: Check locked direction from D1 candle vs EMA 200
+                        if let Ok(Some(locked)) = crate::mrate::locked_direction::get_locked_direction(&self.pool, instrument).await {
+                            let locked_dir = locked.trading_direction();
+                            let signal_dir_enum = match direction {
+                                Some("LONG") => crate::mrate::models::TradingDirection::Long,
+                                Some("SHORT") => crate::mrate::models::TradingDirection::Short,
+                                _ => crate::mrate::models::TradingDirection::Neutral,
+                            };
+                            
+                            // HARD BLOCK if signal opposes locked D1 direction
+                            let direction_opposes = match (locked_dir, signal_dir_enum) {
+                                (crate::mrate::models::TradingDirection::Long, crate::mrate::models::TradingDirection::Short) => true,
+                                (crate::mrate::models::TradingDirection::Short, crate::mrate::models::TradingDirection::Long) => true,
+                                _ => false,
+                            };
+                            
+                            if direction_opposes {
+                                let _ = log_activity(&self.pool, self.bot_id, ActivityType::Info,
+                                    &format!("🚫 BLOCKED [SWING {} counter-D1]: Signal {:?} opposes locked direction {:?} | D1 close: {:.2}, EMA200: {:.2}",
+                                        self.timeframe, 
+                                        signal_dir_enum,
+                                        locked_dir,
+                                        locked.d1_close_price,
+                                        locked.ema_200
+                                    ), 
+                                    Some(serde_json::json!({
+                                        "tier": "swing",
+                                        "timeframe": self.timeframe,
+                                        "instrument": instrument,
+                                        "signal_direction": format!("{:?}", signal_dir_enum),
+                                        "locked_direction": format!("{:?}", locked_dir),
+                                        "d1_close_price": locked.d1_close_price,
+                                        "ema_200": locked.ema_200,
+                                        "locked_at": locked.locked_at.to_rfc3339(),
+                                    }))).await;
+                                tracing::warn!(
+                                    "🚫 BLOCKED: {} {} signal opposes D1 direction {:?} (close {:.2} vs EMA {:.2})",
+                                    instrument, self.timeframe, locked_dir, locked.d1_close_price, locked.ema_200
+                                );
+                                continue; // HARD BLOCK - skip this trade
+                            }
+                            
+                            tracing::info!(
+                                "✅ Direction aligned: {} signal {:?} matches D1 direction {:?}",
+                                instrument, signal_dir_enum, locked_dir
+                            );
+                        } else {
+                            tracing::warn!("⚠️ No locked direction found for {} - proceeding with caution", instrument);
+                        }
+                        
+                        // Step 2: Get instrument score for lot multiplier adjustment
+                        let inst_score = mrate_output.instrument_scores.get_score(instrument);
+                        let mut adjusted_weight = 1.0;
+                        
+                        if let Some(score) = inst_score {
+                            // Boost if strategy category matches instrument's best strategies
+                            if score.best_strategies.contains(&category) {
+                                adjusted_weight = 0.70; // Base boost for matching category
+                                
+                                // Additional boost based on price regime
+                                match score.price_regime {
+                                    crate::mrate::models::PriceRegime::Trending => {
+                                        adjusted_weight += (score.trend_strength - 25.0).max(0.0) / 50.0 * 0.20; // +0-20%
+                                    },
+                                    crate::mrate::models::PriceRegime::Ranging => {
+                                        if matches!(category, crate::mrate::models::StrategyCategory::MeanReversion | crate::mrate::models::StrategyCategory::LiquiditySweep) {
+                                            adjusted_weight = 0.75; // Better for ranging
+                                        }
+                                    },
+                                    _ => {}
+                                }
+                                
+                                adjusted_weight = adjusted_weight.min(0.95);
+                            } else {
+                                // Category doesn't match - use moderate weight
+                                adjusted_weight = 0.50;
+                            }
+                        }
+                        
+                        mrate_lot_multiplier = mrate_output.risk_multiplier * adjusted_weight;
+                        
+                        tracing::info!(
+                            "MRATE [SWING {}]: regime={}, category={:?}, weight={:.0}%, lot_mult={:.2}x",
+                            self.timeframe, mrate_output.regime.as_str(), category, adjusted_weight * 100.0, mrate_lot_multiplier
+                        );
+                        
+                        if let Some(score) = inst_score {
+                            if score.best_strategies.contains(&category) {
+                                let _ = log_activity(&self.pool, self.bot_id, ActivityType::Info,
+                                    &format!("✨ {} {} favors {:?} strategies — boosted to {:.0}%",
+                                        instrument,
+                                        format!("{:?}", score.price_regime).to_lowercase(),
+                                        category,
+                                        adjusted_weight * 100.0
+                                    ), 
+                                    Some(serde_json::json!({
+                                        "instrument": instrument,
+                                        "price_regime": format!("{:?}", score.price_regime),
+                                        "category": category.as_str(),
+                                        "adjusted_weight": adjusted_weight,
+                                    }))).await;
+                            }
+                        }
                     }
                 }
                 
@@ -656,6 +779,29 @@ impl BotRunner {
                     continue;
                 }
                 
+                // ═══════════════════════════════════════════════════════════════════
+                // CROSS-BOT INSTRUMENT LIMIT
+                // Prevents multiple bots from piling into the same instrument.
+                // ═══════════════════════════════════════════════════════════════════
+                let max_instrument_positions = self.strategy_params.get("max_instrument_positions")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(3) as i64;  // Default max 3 positions per instrument across all bots
+                
+                let instrument_position_count: i64 = sqlx::query_scalar(
+                    "SELECT COUNT(*) FROM trade_context WHERE symbol = $1 AND closed_at IS NULL"
+                )
+                .bind(instrument)
+                .fetch_one(&self.pool)
+                .await
+                .unwrap_or(0);
+                
+                if instrument_position_count >= max_instrument_positions {
+                    let _ = log_activity(&self.pool, self.bot_id, ActivityType::Info,
+                        &format!("⛔ Cross-bot limit: {} has {}/{} positions across all bots",
+                            instrument, instrument_position_count, max_instrument_positions), None).await;
+                    continue;
+                }
+                
                 // Place the trade!
                 let direction = match signal_result.signal {
                     Signal::Buy => "BUY",
@@ -664,7 +810,29 @@ impl BotRunner {
                 };
                 
                 // Calculate adjusted lot size with MRATE + Risk multipliers
-                let adjusted_lot_size = (self.lot_size * mrate_lot_multiplier).max(0.01);
+                // Intraday boost: tighter stops → proportionally larger lots
+                // so risk per trade stays consistent across timeframes.
+                let intraday_lot_boost = if tf_tier.is_intraday() {
+                    // Get D1 ATR and local ATR to calculate proportional boost
+                    let d1_atr = mrate_output.instrument_scores.get_score(instrument)
+                        .map(|s| s.d1_atr)
+                        .unwrap_or(0.0);
+                    let local_atr_values = crate::engine::indicators::atr(&candles, 14);
+                    let local_atr = local_atr_values.last().copied().unwrap_or(0.0);
+                    
+                    if d1_atr > 0.0 && local_atr > 0.0 {
+                        // If D1 ATR is 4x local ATR, boost lots ~2x (sqrt scaling, capped)
+                        let ratio = (d1_atr / local_atr).sqrt().min(2.0);
+                        tracing::info!("📈 Intraday lot boost: D1_ATR={:.2}, local_ATR={:.2}, boost={:.2}x",
+                            d1_atr, local_atr, ratio);
+                        ratio
+                    } else {
+                        1.0  // No data, no boost
+                    }
+                } else {
+                    1.0
+                };
+                let adjusted_lot_size = (self.lot_size * mrate_lot_multiplier * intraday_lot_boost).max(0.01);
                 
                 // Calculate notional exposure for this trade
                 let contract_multiplier = units_per_lot(instrument);
@@ -724,26 +892,30 @@ impl BotRunner {
                 }
                 
                 // ═══════════════════════════════════════════════════════════════════
-                // ATR-BASED STOP LOSS & TAKE PROFIT (Phase 2 + D1 ATR from MRATE)
+                // TIMEFRAME-AWARE STOP LOSS & TAKE PROFIT
                 // ═══════════════════════════════════════════════════════════════════
-                // MRATE now provides D1 (daily) ATR-based stops which give trades
-                // "room to breathe" through normal daily volatility swings.
-                // Fall back to local candle ATR if D1 data unavailable.
+                // Intraday (M5/M15): ALWAYS use local candle ATR stops — these
+                //   strategies capture quick moves and need tight, timeframe-matched
+                //   stops. D1 ATR would produce absurd targets (e.g., $60 oil from $66).
+                // Swing (H1+): Use MRATE D1 ATR stops for room to breathe.
                 // ═══════════════════════════════════════════════════════════════════
                 let use_atr_stops = self.strategy_params.get("use_atr_stops")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(true);  // Default to ATR-based
                 
+                // Intraday timeframes NEVER use D1 ATR stops
+                let use_d1_stops = !tf_tier.is_intraday();
+                
                 let (sl_price, tp_price, atr_value, stop_distance_pct, rr_ratio) = if use_atr_stops {
                     // Check if MRATE provides D1-based stop recommendations for this instrument
                     let mrate_instrument_score = mrate_output.instrument_scores.get_score(instrument);
-                    let mrate_stop_available = mrate_instrument_score
+                    let mrate_stop_available = use_d1_stops && mrate_instrument_score
                         .map(|s| s.recommended_stop_distance > 0.0)
                         .unwrap_or(false);
                     
                     if mrate_stop_available {
                         // ═══════════════════════════════════════════════════════════
-                        // USE MRATE D1 ATR STOPS (preferred - gives room to breathe)
+                        // SWING ONLY: D1 ATR stops (gives room to breathe)
                         // ═══════════════════════════════════════════════════════════
                         let score = mrate_instrument_score.unwrap();
                         let stop_dist = score.recommended_stop_distance;
@@ -764,14 +936,15 @@ impl BotRunner {
                         let rr = if adjusted_stop > 0.0 { adjusted_tp / adjusted_stop } else { 0.0 };
                         
                         tracing::info!(
-                            "📊 D1 ATR stops (MRATE): D1_ATR={:.2}, mult={:.1}x, stop_dist={:.2} ({:.1}%), R:R={:.2}",
-                            d1_atr, score.stop_atr_multiplier, adjusted_stop, stop_dist_pct, rr
+                            "📊 D1 ATR stops [SWING {}]: D1_ATR={:.2}, mult={:.1}x, stop_dist={:.2} ({:.1}%), R:R={:.2}",
+                            self.timeframe, d1_atr, score.stop_atr_multiplier, adjusted_stop, stop_dist_pct, rr
                         );
                         
                         (sl, tp, d1_atr, stop_dist_pct, rr)
                     } else {
                         // ═══════════════════════════════════════════════════════════
-                        // FALLBACK: Local candle ATR (when MRATE D1 unavailable)
+                        // LOCAL ATR STOPS (intraday always, swing as fallback)
+                        // Uses the candle timeframe's own ATR — properly sized.
                         // ═══════════════════════════════════════════════════════════
                         let base_atr_sl_mult = self.strategy_params.get("atr_sl_multiplier")
                             .and_then(|v| v.as_f64())
@@ -804,9 +977,10 @@ impl BotRunner {
                         let target_dist = (tp - current_price).abs();
                         let rr = if stop_dist > 0.0 { target_dist / stop_dist } else { 0.0 };
                         
+                        let tier_label = if tf_tier.is_intraday() { "INTRADAY" } else { "SWING fallback" };
                         tracing::info!(
-                            "📊 Local ATR stops (fallback): ATR={:.2}, SL mult={:.1}x, TP mult={:.1}x, Stop={:.1}%, R:R={:.2}",
-                            current_atr, atr_sl_mult, atr_tp_mult, stop_dist_pct, rr
+                            "📊 Local ATR stops [{}]: ATR={:.2}, SL mult={:.1}x, TP mult={:.1}x, Stop={:.1}%, R:R={:.2}",
+                            tier_label, current_atr, atr_sl_mult, atr_tp_mult, stop_dist_pct, rr
                         );
                         
                         (sl, tp, current_atr, stop_dist_pct, rr)
