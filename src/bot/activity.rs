@@ -41,6 +41,9 @@ impl ToString for ActivityType {
 pub struct BotActivity {
     pub id: Uuid,
     pub bot_id: Uuid,
+    pub bot_name: Option<String>,
+    pub instrument: Option<String>,
+    pub timeframe: Option<String>,
     pub activity_type: String,
     pub message: String,
     pub details: Option<serde_json::Value>,
@@ -51,6 +54,9 @@ pub struct BotActivity {
 pub struct BotActivityResponse {
     pub id: String,
     pub bot_id: String,
+    pub bot_name: Option<String>,
+    pub instrument: Option<String>,
+    pub timeframe: Option<String>,
     pub activity_type: String,
     pub message: String,
     pub details: Option<serde_json::Value>,
@@ -62,6 +68,9 @@ impl From<BotActivity> for BotActivityResponse {
         Self {
             id: a.id.to_string(),
             bot_id: a.bot_id.to_string(),
+            bot_name: a.bot_name,
+            instrument: a.instrument,
+            timeframe: a.timeframe,
             activity_type: a.activity_type,
             message: a.message,
             details: a.details,
@@ -103,9 +112,21 @@ pub async fn get_recent_activities(
 ) -> Result<Vec<BotActivity>, sqlx::Error> {
     let activities = sqlx::query_as::<_, BotActivity>(
         r#"
-        SELECT * FROM bot_activities 
-        WHERE bot_id = $1 
-        ORDER BY created_at DESC 
+        SELECT 
+            ba.id,
+            ba.bot_id,
+            b.name as bot_name,
+            s.params->>'symbol' as instrument,
+            s.params->>'timeframe' as timeframe,
+            ba.activity_type,
+            ba.message,
+            ba.details,
+            ba.created_at
+        FROM bot_activities ba
+        JOIN bots b ON ba.bot_id = b.id
+        LEFT JOIN strategies s ON b.strategy_id = s.id
+        WHERE ba.bot_id = $1 
+        ORDER BY ba.created_at DESC 
         LIMIT $2
         "#
     )
@@ -124,8 +145,19 @@ pub async fn get_all_active_activities(
 ) -> Result<Vec<BotActivity>, sqlx::Error> {
     let activities = sqlx::query_as::<_, BotActivity>(
         r#"
-        SELECT ba.* FROM bot_activities ba
+        SELECT 
+            ba.id,
+            ba.bot_id,
+            b.name as bot_name,
+            s.params->>'symbol' as instrument,
+            s.params->>'timeframe' as timeframe,
+            ba.activity_type,
+            ba.message,
+            ba.details,
+            ba.created_at
+        FROM bot_activities ba
         JOIN bots b ON ba.bot_id = b.id
+        LEFT JOIN strategies s ON b.strategy_id = s.id
         WHERE b.is_active = true
         ORDER BY ba.created_at DESC 
         LIMIT $1
