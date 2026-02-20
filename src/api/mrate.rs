@@ -698,6 +698,45 @@ pub async fn get_activities(
     }
 }
 
+/// GET /api/mrate/enabled
+/// Returns whether MRATE is globally enabled
+pub async fn get_enabled(
+    pool: web::Data<sqlx::PgPool>,
+) -> impl Responder {
+    let enabled = crate::mrate::is_mrate_enabled(pool.get_ref()).await;
+    HttpResponse::Ok().json(serde_json::json!({
+        "enabled": enabled
+    }))
+}
+
+/// POST /api/mrate/enabled
+/// Toggle MRATE on/off globally. When off, all bots trade freely.
+#[derive(Debug, Deserialize)]
+pub struct SetEnabledRequest {
+    pub enabled: bool,
+}
+
+pub async fn set_enabled(
+    pool: web::Data<sqlx::PgPool>,
+    body: web::Json<SetEnabledRequest>,
+) -> impl Responder {
+    match crate::mrate::set_mrate_enabled(pool.get_ref(), body.enabled).await {
+        Ok(()) => HttpResponse::Ok().json(serde_json::json!({
+            "success": true,
+            "enabled": body.enabled,
+            "message": if body.enabled {
+                "MRATE enabled — bots will use regime filtering"
+            } else {
+                "MRATE disabled — all bots trade freely"
+            }
+        })),
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+            "success": false,
+            "error": format!("Failed to update MRATE setting: {}", e)
+        })),
+    }
+}
+
 /// Configure MRATE API routes
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -709,5 +748,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/health", web::get().to(get_health))
             .route("/refresh", web::post().to(force_refresh))
             .route("/activities", web::get().to(get_activities))
+            .route("/enabled", web::get().to(get_enabled))
+            .route("/enabled", web::post().to(set_enabled))
     );
 }

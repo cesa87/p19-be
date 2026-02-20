@@ -14,6 +14,7 @@ pub mod predictor;
 pub mod activity_log;
 pub mod advisor;
 pub mod locked_direction;
+pub mod settings;
 
 pub use models::{
     MrateOutput, MrateInputs, Regime, StrategyCategory, StrategyWeights, TrendDirection, 
@@ -25,3 +26,4 @@ pub use scheduler::{MrateScheduler, MrateState, SharedMrateEngine, create_mrate_
 pub use thresholds::DynamicThresholds;
 pub use predictor::{RegimePredictor, RegimePrediction};
 pub use advisor::{MrateAdvisor, AdvisorOutput, Contradiction, Suggestion, BlockedOpportunity, PositionInfo};
+pub use settings::{is_mrate_enabled, set_mrate_enabled};

@@ -143,7 +143,13 @@ impl MrateScheduler {
         }
         
         // Run orchestrator to auto-enable/disable bots based on current conditions
+        // Skip when MRATE is globally disabled — bots trade freely
+        let mrate_enabled = crate::mrate::is_mrate_enabled(&self.pool).await;
+        if !mrate_enabled {
+            tracing::debug!("MRATE disabled — skipping orchestrator auto-enable/disable");
+        }
         let orchestrator = Orchestrator::new(self.pool.clone());
+        if mrate_enabled {
         match orchestrator.get_recommendations(&output).await {
             Ok(response) => {
                 let s = &response.summary;
@@ -166,6 +172,7 @@ impl MrateScheduler {
                 error!("Failed to run orchestrator: {}", e);
             }
         }
+        } // end if mrate_enabled
         
         // ═══════════════════════════════════════════════════════════════════
         // LOCKED DIRECTION UPDATE - Update at NY close (10pm GMT)

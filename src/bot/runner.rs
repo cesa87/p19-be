@@ -518,6 +518,12 @@ impl BotRunner {
             
             if should_trade && signal_result.confidence >= 0.6 {
                 // ═══════════════════════════════════════════════════════════════════
+                // GLOBAL MRATE KILL SWITCH
+                // When MRATE is disabled, skip ALL filtering — bots trade freely
+                // ═══════════════════════════════════════════════════════════════════
+                let mrate_globally_enabled = crate::mrate::is_mrate_enabled(&self.pool).await;
+                
+                // ═══════════════════════════════════════════════════════════════════
                 // TIMEFRAME-AWARE MRATE FILTERING
                 // Intraday (M5/M15): no hard blocking, soft lot reduction on counter-trend
                 // Swing (H1+): full directional bias enforcement from D1 trend
@@ -526,6 +532,10 @@ impl BotRunner {
                 let mut mrate_lot_multiplier = 1.0;
                 let mrate_output = self.fetch_mrate().await.unwrap_or_else(default_mrate_output);
                 if let Some(category) = self.mrate_category {
+                  if !mrate_globally_enabled {
+                    // MRATE disabled — no filtering, no direction blocks, no lot adjustments
+                    tracing::debug!("MRATE disabled — {} trading freely", self.bot_name);
+                  } else {
                     let direction = match signal_result.signal {
                         Signal::Buy => Some("LONG"),
                         Signal::Sell => Some("SHORT"),
@@ -672,6 +682,7 @@ impl BotRunner {
                             }
                         }
                     }
+                  } // end mrate_globally_enabled else
                 }
                 
                 // ═══════════════════════════════════════════════════════════════════
