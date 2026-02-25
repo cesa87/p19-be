@@ -153,7 +153,13 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/gate-thresholds", web::get().to(get_gate_thresholds_handler))
             .route("/gate-thresholds", web::post().to(set_gate_threshold_handler))
             .route("/polymarket-settings", web::get().to(get_polymarket_settings_handler))
-            .route("/polymarket-settings", web::post().to(set_polymarket_setting_handler)),
+            .route("/polymarket-settings", web::post().to(set_polymarket_setting_handler))
+            .route("/global-tension", web::get().to(get_global_tension))
+            .route("/feed/posts", web::get().to(get_feed_posts))
+            .route("/feed/sources", web::get().to(get_feed_sources))
+            .route("/feed/sources", web::post().to(add_feed_source))
+            .route("/feed/sources/{id}", web::delete().to(delete_feed_source))
+            .route("/feed/sources/{id}", web::patch().to(toggle_feed_source)),
     );
 }
 
@@ -208,6 +214,170 @@ pub async fn set_polymarket_setting_handler(
         Ok(_) => HttpResponse::Ok().json(serde_json::json!({ "success": true })),
         Err(e) => {
             error!("Failed to set polymarket setting: {}", e);
+            HttpResponse::InternalServerError().json(ErrorResponse { error: e.to_string() })
+        }
+    }
+}
+
+// ─── Feed Sources & Posts ─────────────────────────────────────────────────────
+
+use super::feed;
+use uuid::Uuid;
+
+#[derive(Deserialize)]
+struct FeedPostsQuery {
+    limit: Option<i64>,
+    source: Option<String>,
+    severity: Option<String>,
+}
+
+/// GET /api/intelligence/feed/posts?limit=50&source=@handle&severity=HIGH
+pub async fn get_feed_posts(
+    pool: web::Data<PgPool>,
+    query: web::Query<FeedPostsQuery>,
+) -> impl Responder {
+    let limit = query.limit.unwrap_or(50).min(200);
+    match feed::get_feed_posts(
+        pool.get_ref(),
+        limit,
+        query.source.as_deref(),
+        query.severity.as_deref(),
+    )
+    .await
+    {
+        Ok(posts) => HttpResponse::Ok().json(posts),
+        Err(e) => {
+            error!("Failed to get feed posts: {}", e);
+            HttpResponse::InternalServerError().json(ErrorResponse { error: e.to_string() })
+        }
+    }
+}
+
+/// GET /api/intelligence/feed/sources
+pub async fn get_feed_sources(pool: web::Data<PgPool>) -> impl Responder {
+    match feed::get_feed_sources(pool.get_ref()).await {
+        Ok(sources) => HttpResponse::Ok().json(sources),
+        Err(e) => {
+            error!("Failed to get feed sources: {}", e);
+            HttpResponse::InternalServerError().json(ErrorResponse { error: e.to_string() })
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct AddSourceRequest {
+    source_type: String,
+    name: String,
+    handle: String,
+    #[serde(default = "default_severity")]
+    default_severity: String,
+}
+fn default_severity() -> String { "MEDIUM".to_string() }
+
+/// POST /api/intelligence/feed/sources
+pub async fn add_feed_source(
+    pool: web::Data<PgPool>,
+    body: web::Json<AddSourceRequest>,
+) -> impl Responder {
+    match feed::add_feed_source(
+        pool.get_ref(),
+        &body.source_type,
+        &body.name,
+        &body.handle,
+        &body.default_severity,
+    )
+    .await
+    {
+        Ok(src) => HttpResponse::Created().json(src),
+        Err(e) => {
+            error!("Failed to add feed source: {}", e);
+            HttpResponse::InternalServerError().json(ErrorResponse { error: e.to_string() })
+        }
+    }
+}
+
+/// DELETE /api/intelligence/feed/sources/{id}
+pub async fn delete_feed_source(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    match feed::delete_feed_source(pool.get_ref(), path.into_inner()).await {
+        Ok(_) => HttpResponse::NoContent().finish(),
+        Err(e) => {
+            error!("Failed to delete feed source: {}", e);
+            HttpResponse::InternalServerError().json(ErrorResponse { error: e.to_string() })
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct ToggleSourceRequest {
+    enabled: bool,
+}
+
+/// PATCH /api/intelligence/feed/sources/{id}
+pub async fn toggle_feed_source(
+    pool: web::Data<PgPool>,
+    path: web::Path<Uuid>,
+    body: web::Json<ToggleSourceRequest>,
+) -> impl Responder {
+    match feed::toggle_feed_source(pool.get_ref(), path.into_inner(), body.enabled).await {
+        Ok(_) => HttpResponse::Ok().json(serde_json::json!({ "success": true })),
+        Err(e) => {
+            error!("Failed to toggle feed source: {}", e);
+            HttpResponse::InternalServerError().json(ErrorResponse { error: e.to_string() })
+        }
+    }
+}
+
+// ─── Global Tension ───────────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+struct GlobalTensionResponse {
+    score: f64,
+    label: &'static str,
+    instruments: Vec<InstrumentTension>,
+    updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Serialize)]
+struct InstrumentTension {
+    instrument: String,
+    tension_score: f64,
+    direction_bias: String,
+}
+
+/// GET /api/intelligence/global-tension
+/// Returns the aggregate tension index (mean of all instrument tension scores).
+pub async fn get_global_tension(pool: web::Data<PgPool>) -> impl Responder {
+    let scorer = IntelligenceScorer::new(pool.get_ref().clone());
+    match scorer.get_latest_scores().await {
+        Ok(scores) if !scores.is_empty() => {
+            let avg = scores.iter().map(|s| s.tension_score).sum::<f64>() / scores.len() as f64;
+            let label = if avg >= 75.0 { "SEVERE" } else if avg >= 50.0 { "HIGH" } else if avg >= 25.0 { "GUARDED" } else { "CALM" };
+            let instruments = scores.into_iter().map(|s| InstrumentTension {
+                instrument: s.instrument,
+                tension_score: s.tension_score,
+                direction_bias: s.direction_bias.unwrap_or_default(),
+            }).collect();
+            HttpResponse::Ok().json(GlobalTensionResponse {
+                score: avg,
+                label,
+                instruments,
+                updated_at: chrono::Utc::now(),
+            })
+        }
+        Ok(_) => {
+            // No scores yet — return default CALM
+            HttpResponse::Ok().json(GlobalTensionResponse {
+                score: 30.0,
+                label: "CALM",
+                instruments: vec![],
+                updated_at: chrono::Utc::now(),
+            })
+        }
+        Err(e) => {
+            error!("Failed to get global tension: {}", e);
             HttpResponse::InternalServerError().json(ErrorResponse { error: e.to_string() })
         }
     }

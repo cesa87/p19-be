@@ -26,7 +26,7 @@ use config::Config;
 use bot::runner::BotManager;
 use mrate::{MrateScheduler, create_mrate_state, create_mrate_engine};
 use sniper::wallet::create_wallet_store;
-use intelligence::{IntelligenceAggregator, IntelligenceScorer, ArbScanner, WhaleTracker, EventDetector};
+use intelligence::{IntelligenceAggregator, IntelligenceScorer, ArbScanner, WhaleTracker, EventDetector, FeedIngester};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -129,6 +129,19 @@ async fn main() -> std::io::Result<()> {
     {
         let detector = event_detector.clone();
         tokio::spawn(async move { detector.run_scheduler().await; });
+    }
+
+    // Intelligence Feed Ingestion — every 2 minutes
+    {
+        let feed_ingester = FeedIngester::new(db_pool.clone(), &config_inner);
+        tokio::spawn(async move {
+            use tokio::time::{interval, Duration};
+            let mut ticker = interval(Duration::from_secs(120));
+            loop {
+                ticker.tick().await;
+                feed_ingester.ingest_all().await;
+            }
+        });
     }
 
     info!("Starting Aureum Backend on {}:{}", config.host, config.port);
