@@ -149,6 +149,66 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/whales", web::get().to(get_whales))
             .route("/arb", web::get().to(get_arb_live))
             .route("/arb/history", web::get().to(get_arb_history))
-            .route("/history/{instrument}", web::get().to(get_score_history)),
+            .route("/history/{instrument}", web::get().to(get_score_history))
+            .route("/gate-thresholds", web::get().to(get_gate_thresholds_handler))
+            .route("/gate-thresholds", web::post().to(set_gate_threshold_handler))
+            .route("/polymarket-settings", web::get().to(get_polymarket_settings_handler))
+            .route("/polymarket-settings", web::post().to(set_polymarket_setting_handler)),
     );
+}
+
+// ─── Gate Thresholds ─────────────────────────────────────────────────────────
+
+/// GET /api/intelligence/gate-thresholds
+pub async fn get_gate_thresholds_handler(pool: web::Data<PgPool>) -> impl Responder {
+    let thresholds = super::settings::get_gate_thresholds(pool.get_ref()).await;
+    HttpResponse::Ok().json(thresholds)
+}
+
+#[derive(Deserialize)]
+pub struct SetThresholdRequest {
+    pub key: String,
+    pub value: f64,
+}
+
+/// POST /api/intelligence/gate-thresholds
+pub async fn set_gate_threshold_handler(
+    pool: web::Data<PgPool>,
+    body: web::Json<SetThresholdRequest>,
+) -> impl Responder {
+    match super::settings::set_gate_threshold(pool.get_ref(), &body.key, body.value).await {
+        Ok(_) => HttpResponse::Ok().json(serde_json::json!({ "success": true })),
+        Err(e) => {
+            error!("Failed to set gate threshold: {}", e);
+            HttpResponse::InternalServerError().json(ErrorResponse { error: e.to_string() })
+        }
+    }
+}
+
+// ─── Polymarket Settings ─────────────────────────────────────────────────────
+
+/// GET /api/intelligence/polymarket-settings
+pub async fn get_polymarket_settings_handler(pool: web::Data<PgPool>) -> impl Responder {
+    let settings = super::settings::get_polymarket_settings(pool.get_ref()).await;
+    HttpResponse::Ok().json(settings)
+}
+
+#[derive(Deserialize)]
+pub struct SetPolymarketSettingRequest {
+    pub key: String,
+    pub value: String,
+}
+
+/// POST /api/intelligence/polymarket-settings
+pub async fn set_polymarket_setting_handler(
+    pool: web::Data<PgPool>,
+    body: web::Json<SetPolymarketSettingRequest>,
+) -> impl Responder {
+    match super::settings::set_polymarket_setting(pool.get_ref(), &body.key, &body.value).await {
+        Ok(_) => HttpResponse::Ok().json(serde_json::json!({ "success": true })),
+        Err(e) => {
+            error!("Failed to set polymarket setting: {}", e);
+            HttpResponse::InternalServerError().json(ErrorResponse { error: e.to_string() })
+        }
+    }
 }

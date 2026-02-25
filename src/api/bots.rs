@@ -23,6 +23,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/{id}/activity", web::get().to(get_bot_activity))
             .route("/{id}/cooldown", web::get().to(get_cooldown_status))
             .route("/activity/all", web::get().to(get_all_activity))
+            .route("/{id}/intelligence-gate", web::get().to(get_bot_gate))
+            .route("/{id}/intelligence-gate", web::post().to(set_bot_gate))
     );
 }
 
@@ -441,5 +443,42 @@ async fn get_cooldown_status(
         "remaining_seconds": remaining_seconds,
         "cooldown_seconds": cooldown_seconds,
         "last_trade_at": last_trade_at,
+    })))
+}
+
+// ─── Intelligence Gate Toggle ─────────────────────────────────────────────────
+
+async fn get_bot_gate(
+    pool: web::Data<DbPool>,
+    path: web::Path<Uuid>,
+) -> Result<HttpResponse, AppError> {
+    let bot_id = path.into_inner();
+    let enabled = crate::intelligence::settings::get_bot_intelligence_gate(pool.get_ref(), bot_id).await;
+    let thresholds = crate::intelligence::settings::get_gate_thresholds(pool.get_ref()).await;
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "bot_id": bot_id,
+        "intelligence_gate_enabled": enabled,
+        "thresholds": thresholds,
+    })))
+}
+
+#[derive(serde::Deserialize)]
+struct SetGateRequest {
+    enabled: bool,
+}
+
+async fn set_bot_gate(
+    pool: web::Data<DbPool>,
+    path: web::Path<Uuid>,
+    body: web::Json<SetGateRequest>,
+) -> Result<HttpResponse, AppError> {
+    let bot_id = path.into_inner();
+    crate::intelligence::settings::set_bot_intelligence_gate(pool.get_ref(), bot_id, body.enabled)
+        .await
+        .map_err(|e| AppError::InternalError(e.to_string()))?;
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "bot_id": bot_id,
+        "intelligence_gate_enabled": body.enabled,
+        "message": if body.enabled { "Intelligence gate ACTIVE — will block/reduce/boost trades" } else { "Intelligence gate OBSERVE — logging impact only" },
     })))
 }

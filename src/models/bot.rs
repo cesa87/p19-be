@@ -32,6 +32,7 @@ pub struct Bot {
     pub cooldown_seconds: Option<i32>,
     pub auto_disabled: Option<bool>,
     pub direction_filter: Option<String>,
+    pub intelligence_gate_enabled: Option<bool>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -69,6 +70,7 @@ pub struct UpdateBotRequest {
     pub trading_days: Option<String>,
     pub cooldown_seconds: Option<i32>,
     pub is_active: Option<bool>,
+    pub intelligence_gate_enabled: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,6 +94,7 @@ pub struct BotResponse {
     pub trading_hours_end: Option<String>,
     pub trading_days: Option<String>,
     pub cooldown_seconds: Option<i32>,
+    pub intelligence_gate_enabled: bool,
     pub is_active: bool,
     pub total_trades: i32,
     pub total_pnl: f64,
@@ -121,6 +124,7 @@ impl From<Bot> for BotResponse {
             trading_hours_end: b.trading_hours_end.map(|t| t.to_string()),
             trading_days: b.trading_days,
             cooldown_seconds: b.cooldown_seconds,
+            intelligence_gate_enabled: b.intelligence_gate_enabled.unwrap_or(false),
             is_active: b.is_active,
             total_trades: b.total_trades.unwrap_or(0),
             total_pnl: b.total_pnl.unwrap_or(0.0),

@@ -15,3 +15,8 @@ pub use scorer::{IntelligenceScore, IntelligenceScorer};
 pub use arb_scanner::{ArbOpportunity, ArbScanner};
 pub use whale_tracker::{WhaleAlert, WhaleTracker};
 pub use event_detector::{IntelligenceEvent, EventDetector};
+pub mod settings;
+pub mod gate;
+
+pub use settings::{get_bot_intelligence_gate, set_bot_intelligence_gate, get_gate_thresholds, GateThresholds};
+pub use gate::{evaluate_gate, instrument_to_intel_key, IntelligenceGateDecision, GateAction};

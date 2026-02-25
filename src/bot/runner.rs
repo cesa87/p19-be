@@ -20,6 +20,9 @@ use crate::engine::indicators::{rsi, adx, atr, ema};
 use crate::macro_sentiment::{PolymarketClient, MacroSentiment};
 use crate::mrate::{StrategyCategory, MrateOutput, MrateState, default_mrate_output, get_current_mrate};
 use crate::risk::{PortfolioRiskEngine, RiskDecision, OpenPosition};
+use crate::intelligence::gate::{evaluate_gate, instrument_to_intel_key, GateAction};
+use crate::intelligence::settings::{get_gate_thresholds};
+use crate::intelligence::scorer::IntelligenceScorer;
 use crate::analytics::learning::calculate_learning_multiplier;
 use chrono::Timelike;
 
@@ -169,6 +172,7 @@ impl BotManager {
             mrate_state: self.mrate_state.clone(),
             risk_engine: self.risk_engine.clone(),
             direction_filter: bot.direction_filter.clone(),
+            intelligence_gate_enabled: bot.intelligence_gate_enabled.unwrap_or(false),
         };
         
         // Spawn the trading loop
@@ -297,6 +301,7 @@ pub struct BotRunner {
     pub mrate_state: MrateState,
     pub risk_engine: Arc<PortfolioRiskEngine>,
     pub direction_filter: Option<String>,  // None/BOTH = both, LONG = long only, SHORT = short only
+    pub intelligence_gate_enabled: bool,   // OFF by default — logs impact without applying
 }
 
 impl BotRunner {
@@ -567,6 +572,78 @@ impl BotRunner {
                     }
                 }
 
+            // ═══════════════════════════════════════════════════════════════════
+            // INTELLIGENCE GATE
+            // Always evaluate and log. Only APPLY when intelligence_gate_enabled.
+            // ═══════════════════════════════════════════════════════════════════
+            let mut intel_lot_multiplier = 1.0_f64;
+            if matches!(signal_result.signal, Signal::Buy | Signal::Sell) {
+                let intel_key = instrument_to_intel_key(instrument);
+                let scorer = IntelligenceScorer::new(self.pool.clone());
+                let latest_scores = scorer.get_latest_scores().await.unwrap_or_default();
+                let intel_score = latest_scores.iter().find(|s| s.instrument == intel_key);
+
+                let thresholds = get_gate_thresholds(&self.pool).await;
+                let signal_is_long = matches!(signal_result.signal, Signal::Buy);
+
+                let gate_decision = if let Some(score) = intel_score {
+                    evaluate_gate(score, signal_is_long, &thresholds)
+                } else {
+                    crate::intelligence::gate::IntelligenceGateDecision::no_data()
+                };
+
+                // ALWAYS log the gate decision (observe mode when gate is off)
+                let gate_mode = if self.intelligence_gate_enabled { "ACTIVE" } else { "OBSERVE" };
+                let (gate_activity_type, gate_log_msg) = match gate_decision.action {
+                    GateAction::Block => (
+                        crate::bot::activity::ActivityType::IntelligenceGateBlock,
+                        format!("[{}] {}", gate_mode, gate_decision.reason),
+                    ),
+                    GateAction::ReduceSize => (
+                        crate::bot::activity::ActivityType::IntelligenceGateReduce,
+                        format!("[{}] {}", gate_mode, gate_decision.reason),
+                    ),
+                    GateAction::Boost => (
+                        crate::bot::activity::ActivityType::IntelligenceGateBoost,
+                        format!("[{}] {}", gate_mode, gate_decision.reason),
+                    ),
+                    GateAction::Allow => (
+                        crate::bot::activity::ActivityType::IntelligenceGateAllow,
+                        format!("[{}] {}", gate_mode, gate_decision.reason),
+                    ),
+                };
+                let _ = log_activity(
+                    &self.pool, self.bot_id, gate_activity_type, &gate_log_msg,
+                    Some(serde_json::json!({
+                        "gate_enabled": self.intelligence_gate_enabled,
+                        "action": format!("{:?}", gate_decision.action),
+                        "size_multiplier": gate_decision.size_multiplier,
+                        "tension_score": gate_decision.tension_score,
+                        "opportunity_score": gate_decision.opportunity_score,
+                        "confidence": gate_decision.confidence,
+                        "direction_bias": gate_decision.direction_bias,
+                        "signal_score": gate_decision.signal_score,
+                        "instrument": intel_key,
+                    })),
+                ).await;
+
+                // Only APPLY the gate decision if enabled for this bot
+                if self.intelligence_gate_enabled {
+                    match gate_decision.action {
+                        GateAction::Block => {
+                            should_trade = false;
+                        }
+                        GateAction::ReduceSize => {
+                            intel_lot_multiplier = gate_decision.size_multiplier;
+                        }
+                        GateAction::Boost => {
+                            intel_lot_multiplier = gate_decision.size_multiplier;
+                        }
+                        GateAction::Allow => {}
+                    }
+                }
+            }
+
             if should_trade && signal_result.confidence >= 0.6 {
                 // ═══════════════════════════════════════════════════════════════════
                 // DIRECTIONAL FILTERING REMOVED — bots trade freely both directions
@@ -731,7 +808,7 @@ impl BotRunner {
                 } else {
                     1.0
                 };
-                let adjusted_lot_size = (self.lot_size * mrate_lot_multiplier * intraday_lot_boost).max(0.01);
+                let adjusted_lot_size = (self.lot_size * mrate_lot_multiplier * intraday_lot_boost * intel_lot_multiplier).max(0.01);
                 
                 // Calculate notional exposure for this trade (in USD)
                 // For USD-base pairs (USD_JPY, USD_CHF, etc.), units ARE in USD already

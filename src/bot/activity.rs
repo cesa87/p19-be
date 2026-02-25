@@ -18,6 +18,10 @@ pub enum ActivityType {
     TakeProfit,
     Error,
     PriceUpdate,
+    IntelligenceGateBlock,   // Signal would have been blocked by intelligence gate
+    IntelligenceGateReduce,  // Signal would have had size reduced
+    IntelligenceGateBoost,   // Signal would have had size boosted
+    IntelligenceGateAllow,   // Signal passed through gate unchanged
 }
 
 impl ToString for ActivityType {
@@ -33,6 +37,10 @@ impl ToString for ActivityType {
             ActivityType::TakeProfit => "take_profit".to_string(),
             ActivityType::Error => "error".to_string(),
             ActivityType::PriceUpdate => "price_update".to_string(),
+            ActivityType::IntelligenceGateBlock => "intelligence_gate_block".to_string(),
+            ActivityType::IntelligenceGateReduce => "intelligence_gate_reduce".to_string(),
+            ActivityType::IntelligenceGateBoost => "intelligence_gate_boost".to_string(),
+            ActivityType::IntelligenceGateAllow => "intelligence_gate_allow".to_string(),
         }
     }
 }
