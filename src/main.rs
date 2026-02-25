@@ -98,7 +98,6 @@ async fn main() -> std::io::Result<()> {
             .allowed_origin("http://localhost:3000")
             .allowed_origin("https://app.project-bubblegum.shop")
             .allowed_origin("https://project-bubblegum.shop")
-            .allowed_origin("https://d1vf6eoz2xzfi8.cloudfront.net")
             .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
             .allowed_headers(vec![
                 actix_web::http::header::AUTHORIZATION,

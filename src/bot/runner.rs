@@ -14,6 +14,8 @@ use crate::models::{Bot, Strategy, Candle};
 use crate::models::trade_context::{TradeContextBuilder, insert_trade_context};
 use crate::bot::signals::{generate_signal, Signal};
 use crate::bot::activity::{log_activity, ActivityType};
+use crate::analytics::trailing_stop::TrailingStopManager;
+use crate::analytics::trade_analyzer::{TradeAnalyzer, TradeRecommendation};
 use crate::engine::indicators::{rsi, adx, atr, ema};
 use crate::macro_sentiment::{PolymarketClient, MacroSentiment};
 use crate::mrate::{StrategyCategory, MrateOutput, MrateState, default_mrate_output, get_current_mrate};
@@ -139,6 +141,9 @@ impl BotManager {
             tracing::info!("Bot {} has MRATE category: {:?}", bot.name, mrate_category);
         }
         
+        // Create trailing stop manager
+        let trailing_stop = TrailingStopManager::new(self.pool.clone(), None);
+        
         // Create runner
         let runner = BotRunner {
             bot_id,
@@ -159,9 +164,11 @@ impl BotManager {
             account_id,
             is_practice,
             pool: self.pool.clone(),
+            trailing_stop,
             mrate_category,
             mrate_state: self.mrate_state.clone(),
             risk_engine: self.risk_engine.clone(),
+            direction_filter: bot.direction_filter.clone(),
         };
         
         // Spawn the trading loop
@@ -285,9 +292,11 @@ pub struct BotRunner {
     pub account_id: String,
     pub is_practice: bool,
     pub pool: sqlx::PgPool,
+    pub trailing_stop: TrailingStopManager,
     pub mrate_category: Option<StrategyCategory>,
     pub mrate_state: MrateState,
     pub risk_engine: Arc<PortfolioRiskEngine>,
+    pub direction_filter: Option<String>,  // None/BOTH = both, LONG = long only, SHORT = short only
 }
 
 impl BotRunner {
@@ -345,6 +354,27 @@ impl BotRunner {
             // Reconcile DB with actual OANDA positions (catches manual closes, restarts, etc.)
             if let Err(e) = self.reconcile_positions(&client).await {
                 tracing::warn!("Failed to reconcile positions: {}", e);
+            }
+            
+            // ═══════════════════════════════════════════════════════════════════
+            // TRAILING STOP MANAGEMENT - Update SL/TP on all open positions
+            // Protects profits overnight when you're not watching.
+            // ═══════════════════════════════════════════════════════════════════
+            if let Err(e) = self.manage_trailing_stops(&client).await {
+                tracing::warn!("Trailing stop management error: {}", e);
+            }
+            
+            // ═══════════════════════════════════════════════════════════════════
+            // AI AUTO-CLOSE - Act on CloseNow recommendations from TradeAnalyzer
+            // ═══════════════════════════════════════════════════════════════════
+            let auto_manage = self.strategy_params.get("auto_manage_positions")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
+            
+            if auto_manage {
+                if let Err(e) = self.ai_auto_manage(&client).await {
+                    tracing::warn!("AI auto-manage error: {}", e);
+                }
             }
             
             // Update account equity from broker every 5 minutes
@@ -504,7 +534,7 @@ impl BotRunner {
             ).await;
             
             // Check if we should act on the signal
-            let should_trade = match signal_result.signal {
+            let mut should_trade = match signal_result.signal {
                 Signal::Buy | Signal::Sell => {
                     // Check cooldown
                     if let Some(last_time) = last_signal_time {
@@ -516,177 +546,35 @@ impl BotRunner {
                 Signal::Hold => false,
             };
             
+            // ═══════════════════════════════════════════════════════════════════
+                // PER-BOT DIRECTION FILTER
+                // If bot is locked to LONG or SHORT, skip opposing signals
+                // ═══════════════════════════════════════════════════════════════════
+                if should_trade {
+                    if let Some(ref filter) = self.direction_filter {
+                        let blocked = match (filter.as_str(), &signal_result.signal) {
+                            ("LONG", Signal::Sell) => true,
+                            ("SHORT", Signal::Buy) => true,
+                            _ => false,
+                        };
+                        if blocked {
+                            let _ = log_activity(&self.pool, self.bot_id, ActivityType::Info,
+                                &format!("🔒 Direction filter: {} only — skipping {:?} signal",
+                                    filter, signal_result.signal),
+                                None).await;
+                            should_trade = false;
+                        }
+                    }
+                }
+
             if should_trade && signal_result.confidence >= 0.6 {
                 // ═══════════════════════════════════════════════════════════════════
-                // GLOBAL MRATE KILL SWITCH
-                // When MRATE is disabled, skip ALL filtering — bots trade freely
-                // ═══════════════════════════════════════════════════════════════════
-                let mrate_globally_enabled = crate::mrate::is_mrate_enabled(&self.pool).await;
-                
-                // ═══════════════════════════════════════════════════════════════════
-                // TIMEFRAME-AWARE MRATE FILTERING
-                // Intraday (M5/M15): no hard blocking, soft lot reduction on counter-trend
-                // Swing (H1+): full directional bias enforcement from D1 trend
+                // DIRECTIONAL FILTERING REMOVED — bots trade freely both directions
+                // MRATE output kept for regime thresholds (SL/TP adjustments only)
                 // ═══════════════════════════════════════════════════════════════════
                 let tf_tier = TimeframeTier::from_timeframe(&self.timeframe);
                 let mut mrate_lot_multiplier = 1.0;
                 let mrate_output = self.fetch_mrate().await.unwrap_or_else(default_mrate_output);
-                if let Some(category) = self.mrate_category {
-                  if !mrate_globally_enabled {
-                    // MRATE disabled — no filtering, no direction blocks, no lot adjustments
-                    tracing::debug!("MRATE disabled — {} trading freely", self.bot_name);
-                  } else {
-                    let direction = match signal_result.signal {
-                        Signal::Buy => Some("LONG"),
-                        Signal::Sell => Some("SHORT"),
-                        Signal::Hold => None,
-                    };
-                    
-                    if tf_tier.is_intraday() {
-                        // ── INTRADAY: Never block, only adjust lot size ──
-                        // Get the instrument's D1 trading direction for soft filtering
-                        let inst_score = mrate_output.instrument_scores.get_score(instrument);
-                        let d1_direction = inst_score.map(|s| s.trading_direction);
-                        
-                        let direction_opposes = match (direction, d1_direction) {
-                            (Some("LONG"), Some(crate::mrate::models::TradingDirection::Short)) => true,
-                            (Some("SHORT"), Some(crate::mrate::models::TradingDirection::Long)) => true,
-                            _ => false,
-                        };
-                        
-                        if direction_opposes {
-                            // Counter-trend intraday: reduce lots by 50%, don't block
-                            mrate_lot_multiplier = 0.5 * mrate_output.risk_multiplier;
-                            let _ = log_activity(&self.pool, self.bot_id, ActivityType::Info,
-                                &format!("⚡ Intraday counter-D1: {} on {} — lot reduced 50%",
-                                    direction.unwrap_or("?"), instrument),
-                                Some(serde_json::json!({
-                                    "tier": "intraday",
-                                    "timeframe": self.timeframe,
-                                    "d1_direction": format!("{:?}", d1_direction),
-                                    "signal_direction": direction,
-                                    "lot_multiplier": mrate_lot_multiplier,
-                                }))).await;
-                        } else {
-                            // Aligned or neutral: use risk multiplier only (no category weight penalty)
-                            mrate_lot_multiplier = mrate_output.risk_multiplier;
-                        }
-                        
-                        tracing::info!(
-                            "MRATE [INTRADAY {}]: regime={}, lot_mult={:.2}x, counter_trend={}",
-                            self.timeframe, mrate_output.regime.as_str(), mrate_lot_multiplier, direction_opposes
-                        );
-                    } else {
-                        // ── SWING (H1+): MANDATORY D1 direction check ──
-                        // Step 1: Check locked direction from D1 candle vs EMA 200
-                        if let Ok(Some(locked)) = crate::mrate::locked_direction::get_locked_direction(&self.pool, instrument).await {
-                            let locked_dir = locked.trading_direction();
-                            let signal_dir_enum = match direction {
-                                Some("LONG") => crate::mrate::models::TradingDirection::Long,
-                                Some("SHORT") => crate::mrate::models::TradingDirection::Short,
-                                _ => crate::mrate::models::TradingDirection::Neutral,
-                            };
-                            
-                            // HARD BLOCK if signal opposes locked D1 direction
-                            let direction_opposes = match (locked_dir, signal_dir_enum) {
-                                (crate::mrate::models::TradingDirection::Long, crate::mrate::models::TradingDirection::Short) => true,
-                                (crate::mrate::models::TradingDirection::Short, crate::mrate::models::TradingDirection::Long) => true,
-                                _ => false,
-                            };
-                            
-                            if direction_opposes {
-                                let _ = log_activity(&self.pool, self.bot_id, ActivityType::Info,
-                                    &format!("🚫 BLOCKED [SWING {} counter-D1]: Signal {:?} opposes locked direction {:?} | D1 close: {:.2}, EMA200: {:.2}",
-                                        self.timeframe, 
-                                        signal_dir_enum,
-                                        locked_dir,
-                                        locked.d1_close_price,
-                                        locked.ema_200
-                                    ), 
-                                    Some(serde_json::json!({
-                                        "tier": "swing",
-                                        "timeframe": self.timeframe,
-                                        "instrument": instrument,
-                                        "signal_direction": format!("{:?}", signal_dir_enum),
-                                        "locked_direction": format!("{:?}", locked_dir),
-                                        "d1_close_price": locked.d1_close_price,
-                                        "ema_200": locked.ema_200,
-                                        "locked_at": locked.locked_at.to_rfc3339(),
-                                    }))).await;
-                                tracing::warn!(
-                                    "🚫 BLOCKED: {} {} signal opposes D1 direction {:?} (close {:.2} vs EMA {:.2})",
-                                    instrument, self.timeframe, locked_dir, locked.d1_close_price, locked.ema_200
-                                );
-                                continue; // HARD BLOCK - skip this trade
-                            }
-                            
-                            tracing::info!(
-                                "✅ Direction aligned: {} signal {:?} matches D1 direction {:?}",
-                                instrument, signal_dir_enum, locked_dir
-                            );
-                        } else {
-                            tracing::warn!("⚠️ No locked direction found for {} - proceeding with caution", instrument);
-                        }
-                        
-                        // Step 2: Get instrument score for lot multiplier adjustment
-                        let inst_score = mrate_output.instrument_scores.get_score(instrument);
-                        let mut adjusted_weight = 1.0;
-                        
-                        if let Some(score) = inst_score {
-                            // Boost if strategy category matches instrument's best strategies
-                            if score.best_strategies.contains(&category) {
-                                adjusted_weight = 0.70; // Base boost for matching category
-                                
-                                // Additional boost based on price regime
-                                match score.price_regime {
-                                    crate::mrate::models::PriceRegime::Trending => {
-                                        adjusted_weight += (score.trend_strength - 25.0).max(0.0) / 50.0 * 0.20; // +0-20%
-                                    },
-                                    crate::mrate::models::PriceRegime::Ranging => {
-                                        if matches!(category, crate::mrate::models::StrategyCategory::MeanReversion | crate::mrate::models::StrategyCategory::LiquiditySweep) {
-                                            adjusted_weight = 0.75; // Better for ranging
-                                        }
-                                    },
-                                    _ => {}
-                                }
-                                
-                                adjusted_weight = adjusted_weight.min(0.95);
-                            } else {
-                                // Category doesn't match - use moderate weight
-                                adjusted_weight = 0.50;
-                            }
-                        }
-                        
-                        mrate_lot_multiplier = mrate_output.risk_multiplier * adjusted_weight;
-                        
-                        tracing::info!(
-                            "MRATE [SWING {}]: regime={}, category={:?}, weight={:.0}%, lot_mult={:.2}x",
-                            self.timeframe, mrate_output.regime.as_str(), category, adjusted_weight * 100.0, mrate_lot_multiplier
-                        );
-                        
-                        if let Some(score) = inst_score {
-                            if score.best_strategies.contains(&category) {
-                                let _ = log_activity(&self.pool, self.bot_id, ActivityType::Info,
-                                    &format!("✨ {} {} favors {:?} strategies — boosted to {:.0}%",
-                                        instrument,
-                                        format!("{:?}", score.price_regime).to_lowercase(),
-                                        category,
-                                        adjusted_weight * 100.0
-                                    ), 
-                                    Some(serde_json::json!({
-                                        "instrument": instrument,
-                                        "price_regime": format!("{:?}", score.price_regime),
-                                        "category": category.as_str(),
-                                        "adjusted_weight": adjusted_weight,
-                                    }))).await;
-                            }
-                        }
-                    }
-                  } // end mrate_globally_enabled else
-                }
-                
-                // ═══════════════════════════════════════════════════════════════════
-                // ADAPTIVE LEARNING - ADJUST FROM HISTORICAL PERFORMANCE
                 // ═══════════════════════════════════════════════════════════════════
                 let regime_str = mrate_output.regime.as_str();
                 let hour = chrono::Utc::now().hour();
@@ -713,9 +601,9 @@ impl BotRunner {
                 }
                 
                 // Re-check confidence after learning adjustment — may have dropped below threshold
-                if signal_result.confidence < 0.6 {
+                if signal_result.confidence < 0.50 {
                     let _ = log_activity(&self.pool, self.bot_id, ActivityType::Info,
-                        &format!("🧠 Learning dropped confidence to {:.2} (below 0.6 threshold) — skipping trade", 
+                        &format!("🧠 Learning dropped confidence to {:.2} (below 0.50 threshold) — skipping trade", 
                             signal_result.confidence), 
                         Some(serde_json::json!({
                             "learning_summary": learning.summary,
@@ -845,9 +733,16 @@ impl BotRunner {
                 };
                 let adjusted_lot_size = (self.lot_size * mrate_lot_multiplier * intraday_lot_boost).max(0.01);
                 
-                // Calculate notional exposure for this trade
+                // Calculate notional exposure for this trade (in USD)
+                // For USD-base pairs (USD_JPY, USD_CHF, etc.), units ARE in USD already
+                // so notional = units, not units * price (price is in foreign currency)
                 let contract_multiplier = units_per_lot(instrument);
-                let proposed_notional = adjusted_lot_size * contract_multiplier * current_price;
+                let units = adjusted_lot_size * contract_multiplier;
+                let proposed_notional = if instrument.starts_with("USD_") {
+                    units  // Already in USD terms
+                } else {
+                    units * current_price  // Convert to USD via price
+                };
                 
                 // Check exposure limits
                 let exposure_decision = self.risk_engine.check_exposure_limits(
@@ -959,10 +854,10 @@ impl BotRunner {
                         // ═══════════════════════════════════════════════════════════
                         let base_atr_sl_mult = self.strategy_params.get("atr_sl_multiplier")
                             .and_then(|v| v.as_f64())
-                            .unwrap_or(1.5);  // 1.5x ATR for stop
+                            .unwrap_or(0.5);  // 0.5x ATR for stop (sniper entry)
                         let base_atr_tp_mult = self.strategy_params.get("atr_tp_multiplier")
                             .and_then(|v| v.as_f64())
-                            .unwrap_or(3.0);  // 3.0x ATR for target (2:1 R:R)
+                            .unwrap_or(2.0);  // 2.0x ATR for target (2:1 R:R)
                         
                         // Apply MRATE DTE multipliers to ATR stops/TPs
                         let atr_sl_mult = mrate_output.thresholds.adjust_stop_loss(base_atr_sl_mult);
@@ -1077,6 +972,26 @@ impl BotRunner {
                         .bind(self.bot_id)
                         .execute(&self.pool)
                         .await;
+                        
+                        // ══════════════════════════════════════════
+                        // TRAILING STOP - Initialize for new position
+                        // ══════════════════════════════════════════
+                        {
+                            let trail_dir = if direction == "BUY" { "long" } else { "short" };
+                            match self.trailing_stop.initialize_position(
+                                uuid::Uuid::new_v4(),
+                                order.id.clone(),
+                                instrument.to_string(),
+                                trail_dir.to_string(),
+                                current_price,
+                                sl_price,
+                                tp_price,
+                                atr_value,
+                            ).await {
+                                Ok(_) => tracing::info!("📏 Trailing stop initialized for trade {}", order.id),
+                                Err(e) => tracing::warn!("Failed to init trailing stop: {}", e),
+                            }
+                        }
                         
                         // ═══════════════════════════════════════════════════════════════════
                         // TRADE CONTEXT CAPTURE - Store market conditions for learning
@@ -1328,6 +1243,16 @@ impl BotRunner {
                         .await;
                         
                         // ══════════════════════════════════════════
+                        // TRAILING STOP - Clean up state on close
+                        // ══════════════════════════════════════════
+                        let _ = sqlx::query(
+                            "DELETE FROM trailing_stop_state WHERE external_trade_id = $1"
+                        )
+                        .bind(&trade.id)
+                        .execute(&self.pool)
+                        .await;
+                        
+                        // ══════════════════════════════════════════
                         // RISK ENGINE - Update closed position
                         // ══════════════════════════════════════════
                         // Try to find and close the position in risk engine
@@ -1403,6 +1328,14 @@ impl BotRunner {
             .map_err(|e| format!("Failed to fetch closed trades: {}", e))?;
         
         for (context_id, external_trade_id) in orphaned {
+            // Also clean up any matching trailing stop state
+            let _ = sqlx::query(
+                "DELETE FROM trailing_stop_state WHERE external_trade_id = $1"
+            )
+            .bind(&external_trade_id)
+            .execute(&self.pool)
+            .await;
+            
             // Try to find this trade in closed trades
             if let Some(closed_trade) = closed_trades.iter().find(|t| &t.id == external_trade_id) {
                 // Found it - update with actual exit data
@@ -1525,5 +1458,142 @@ impl BotRunner {
                 outcome, cluster_id.as_string(), regime, pnl
             );
         }
+    }
+    
+    /// Manage trailing stops for positions matching this bot's instrument
+    async fn manage_trailing_stops(&self, client: &OandaClient) -> Result<(), String> {
+        // Throttle: only run every 2 minutes (skip 3 out of 4 ticks at 30s interval)
+        if chrono::Utc::now().timestamp() % 120 > 30 {
+            return Ok(());
+        }
+        
+        // Get instrument for this bot
+        let my_instrument = self.strategy_params.get("instrument")
+            .or_else(|| self.strategy_params.get("symbol"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("XAU_USD");
+        
+        let positions = self.trailing_stop.get_all_positions().await
+            .map_err(|e| format!("Failed to get trailing positions: {}", e))?;
+        
+        if positions.is_empty() {
+            return Ok(());
+        }
+        
+        for position in &positions {
+            // Only manage positions for THIS bot's instrument
+            if position.instrument != my_instrument {
+                continue;
+            }
+            if position.external_trade_id.is_empty() {
+                continue;
+            }
+            
+            // Get current mid price
+            let current_price = match client.get_price(&position.instrument).await {
+                Ok(pi) => {
+                    let bid: f64 = pi.bids.first().and_then(|b| b.price.parse().ok()).unwrap_or(0.0);
+                    let ask: f64 = pi.asks.first().and_then(|a| a.price.parse().ok()).unwrap_or(0.0);
+                    (bid + ask) / 2.0
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to get price for {}: {}", position.instrument, e);
+                    continue;
+                }
+            };
+            
+            if current_price <= 0.0 { continue; }
+            
+            // Run trailing stop logic
+            match self.trailing_stop.update_trailing_stop(position.position_id, current_price).await {
+                Ok(decision) => {
+                    let mut new_sl = None;
+                    let mut new_tp = None;
+                    
+                    if decision.should_update_stop { new_sl = decision.new_stop; }
+                    if decision.should_extend_tp { new_tp = decision.new_tp; }
+                    
+                    if new_sl.is_some() || new_tp.is_some() {
+                        match client.modify_trade(&position.external_trade_id, new_sl, new_tp).await {
+                            Ok(()) => {
+                                let _ = log_activity(
+                                    &self.pool, self.bot_id, ActivityType::Info,
+                                    &format!("📏 Trail updated: {} | {}", position.instrument, decision.reasoning),
+                                    Some(serde_json::json!({
+                                        "trade_id": position.external_trade_id,
+                                        "new_sl": new_sl, "new_tp": new_tp,
+                                        "price": current_price,
+                                    })),
+                                ).await;
+                            }
+                            Err(e) => {
+                                tracing::warn!("Failed to modify trade {} on OANDA: {}", position.external_trade_id, e);
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Trailing stop update failed for {}: {}", position.position_id, e);
+                }
+            }
+        }
+        
+        Ok(())
+    }
+    
+    /// AI auto-management: close trades the AI brain says should close
+    async fn ai_auto_manage(&self, client: &OandaClient) -> Result<(), String> {
+        // Only run every 5 minutes (first 30s of each window)
+        let now = chrono::Utc::now();
+        if now.timestamp() % 300 > 30 {
+            return Ok(());
+        }
+        
+        let mrate = match self.fetch_mrate().await {
+            Some(m) => m,
+            None => return Ok(()),
+        };
+        
+        let (analyses, _insights) = match TradeAnalyzer::analyze_open_trades(&self.pool, client, &mrate).await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!("AI auto-manage analysis failed: {}", e);
+                return Ok(());
+            }
+        };
+        
+        for analysis in &analyses {
+            if analysis.recommendation == TradeRecommendation::CloseNow && analysis.confidence < 0.25 {
+                tracing::warn!(
+                    "🤖 AI AUTO-CLOSE: {} {} (bot: {}) - conf {:.2}, reasons: {:?}",
+                    analysis.instrument, analysis.direction, analysis.bot_name,
+                    analysis.confidence, analysis.reasons
+                );
+                
+                match client.close_trade(&analysis.trade_id).await {
+                    Ok(()) => {
+                        let _ = log_activity(
+                            &self.pool, self.bot_id, ActivityType::Warning,
+                            &format!("🤖 AI AUTO-CLOSED: {} {} @ {:.2} (PnL: {:.2}) | {}",
+                                analysis.instrument, analysis.direction,
+                                analysis.current_price, analysis.unrealized_pnl,
+                                analysis.reasons.join("; ")),
+                            Some(serde_json::json!({
+                                "trade_id": analysis.trade_id,
+                                "instrument": analysis.instrument,
+                                "unrealized_pnl": analysis.unrealized_pnl,
+                                "auto_managed": true,
+                            })),
+                        ).await;
+                        tracing::info!("✅ AI auto-closed trade {} (PnL: {:.2})", analysis.trade_id, analysis.unrealized_pnl);
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to auto-close trade {}: {}", analysis.trade_id, e);
+                    }
+                }
+            }
+        }
+        
+        Ok(())
     }
 }

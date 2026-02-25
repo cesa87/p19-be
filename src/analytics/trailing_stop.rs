@@ -46,8 +46,8 @@ pub struct TrailingStopConfig {
 impl Default for TrailingStopConfig {
     fn default() -> Self {
         Self {
-            base_trail_atr: 2.0,
-            min_profit_to_trail_atr: 0.5,
+            base_trail_atr: 1.2,
+            min_profit_to_trail_atr: 0.3,
             tp_extension_threshold: 0.7,      // Extend if 70% to TP
             tp_extension_multiplier: 1.4,     // Extend by 40%
             trend_regime_trail_multiplier: 1.5,
@@ -62,6 +62,7 @@ impl Default for TrailingStopConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrailingStopState {
     pub position_id: Uuid,
+    pub external_trade_id: String,  // OANDA trade ID for modifying SL/TP
     pub instrument: String,
     pub direction: String,  // "long" or "short"
     
@@ -120,6 +121,7 @@ impl TrailingStopManager {
     pub async fn initialize_position(
         &self,
         position_id: Uuid,
+        external_trade_id: String,
         instrument: String,
         direction: String,
         entry_price: f64,
@@ -130,6 +132,7 @@ impl TrailingStopManager {
         let instrument_display = instrument.clone();
         let state = TrailingStopState {
             position_id,
+            external_trade_id,
             instrument,
             direction: direction.clone(),
             entry_price,
@@ -187,8 +190,25 @@ impl TrailingStopManager {
         // Get ML adjustments
         let ml_adjustments = self.get_ml_adjustments(&state).await?;
         
-        // Calculate adjusted trail distance
-        let adjusted_trail_atr = self.config.base_trail_atr 
+        // Calculate adjusted trail distance with PROGRESSIVE TIGHTENING
+        // As profit grows, trail gets tighter to lock in gains:
+        //   0.3-0.5 ATR profit → 1.2x ATR trail (give room to breathe)
+        //   0.5-1.0 ATR profit → 0.9x ATR trail (tightening)
+        //   1.0-2.0 ATR profit → 0.6x ATR trail (locking profit)
+        //   2.0+ ATR profit    → 0.4x ATR trail (tight lock)
+        let progressive_base = if profit_atr >= 2.0 {
+            0.4
+        } else if profit_atr >= 1.0 {
+            // Linear interpolation: 0.6 at 1.0 ATR → 0.4 at 2.0 ATR
+            0.6 - (profit_atr - 1.0) * 0.2
+        } else if profit_atr >= 0.5 {
+            // Linear interpolation: 0.9 at 0.5 ATR → 0.6 at 1.0 ATR
+            0.9 - (profit_atr - 0.5) * 0.6
+        } else {
+            self.config.base_trail_atr  // 1.2 ATR at activation
+        };
+        
+        let adjusted_trail_atr = progressive_base
             * ml_adjustments.regime_multiplier
             * ml_adjustments.correlation_multiplier
             * ml_adjustments.sentiment_multiplier;
@@ -326,25 +346,26 @@ impl TrailingStopManager {
         sqlx::query!(
             r#"
             INSERT INTO trailing_stop_state 
-                (position_id, instrument, direction, entry_price, original_stop, original_tp,
+                (position_id, external_trade_id, instrument, direction, entry_price, original_stop, original_tp,
                  current_stop, current_tp, atr, trail_distance_atr, trailing_active, tp_extended,
                  highest_price, lowest_price, regime_adjustment, correlation_adjustment,
                  sentiment_adjustment, created_at, last_updated)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
             ON CONFLICT (position_id) DO UPDATE SET
-                current_stop = $7,
-                current_tp = $8,
-                trail_distance_atr = $10,
-                trailing_active = $11,
-                tp_extended = $12,
-                highest_price = $13,
-                lowest_price = $14,
-                regime_adjustment = $15,
-                correlation_adjustment = $16,
-                sentiment_adjustment = $17,
-                last_updated = $19
+                current_stop = $8,
+                current_tp = $9,
+                trail_distance_atr = $11,
+                trailing_active = $12,
+                tp_extended = $13,
+                highest_price = $14,
+                lowest_price = $15,
+                regime_adjustment = $16,
+                correlation_adjustment = $17,
+                sentiment_adjustment = $18,
+                last_updated = $20
             "#,
             state.position_id,
+            &state.external_trade_id,
             state.instrument,
             state.direction,
             BigDecimal::from_str(&state.entry_price.to_string()).unwrap(),
@@ -384,6 +405,7 @@ impl TrailingStopManager {
         
         Ok(TrailingStopState {
             position_id: row.position_id,
+            external_trade_id: row.external_trade_id.unwrap_or_default(),
             instrument: row.instrument,
             direction: row.direction,
             entry_price: row.entry_price.to_string().parse().unwrap(),
@@ -421,6 +443,45 @@ impl TrailingStopManager {
             .into_iter()
             .map(|row| TrailingStopState {
                 position_id: row.position_id,
+                external_trade_id: row.external_trade_id.unwrap_or_default(),
+                instrument: row.instrument,
+                direction: row.direction,
+                entry_price: row.entry_price.to_string().parse().unwrap(),
+                original_stop: row.original_stop.to_string().parse().unwrap(),
+                original_tp: row.original_tp.to_string().parse().unwrap(),
+                current_stop: row.current_stop.to_string().parse().unwrap(),
+                current_tp: row.current_tp.to_string().parse().unwrap(),
+                atr: row.atr.to_string().parse().unwrap(),
+                trail_distance_atr: row.trail_distance_atr.to_string().parse().unwrap(),
+                trailing_active: row.trailing_active,
+                tp_extended: row.tp_extended,
+                highest_price: row.highest_price.to_string().parse().unwrap(),
+                lowest_price: row.lowest_price.to_string().parse().unwrap(),
+                regime_adjustment: row.regime_adjustment,
+                correlation_adjustment: row.correlation_adjustment.to_string().parse().unwrap(),
+                sentiment_adjustment: row.sentiment_adjustment.to_string().parse().unwrap(),
+                created_at: row.created_at,
+                last_updated: row.last_updated,
+            })
+            .collect())
+    }
+    
+    /// Get ALL tracked positions (active or not yet activated)
+    pub async fn get_all_positions(&self) -> Result<Vec<TrailingStopState>> {
+        let rows = sqlx::query!(
+            r#"
+            SELECT * FROM trailing_stop_state
+            ORDER BY last_updated DESC
+            "#
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        
+        Ok(rows
+            .into_iter()
+            .map(|row| TrailingStopState {
+                position_id: row.position_id,
+                external_trade_id: row.external_trade_id.unwrap_or_default(),
                 instrument: row.instrument,
                 direction: row.direction,
                 entry_price: row.entry_price.to_string().parse().unwrap(),

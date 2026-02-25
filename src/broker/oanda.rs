@@ -435,6 +435,77 @@ impl OandaClient {
 
         Ok(data.trade)
     }
+
+    /// Modify stop loss and/or take profit on an open trade
+    pub async fn modify_trade(
+        &self,
+        trade_id: &str,
+        stop_loss: Option<f64>,
+        take_profit: Option<f64>,
+    ) -> Result<(), AppError> {
+        let url = format!(
+            "{}/v3/accounts/{}/trades/{}/orders",
+            self.base_url, self.account_id, trade_id
+        );
+
+        let mut body = serde_json::json!({});
+
+        if let Some(sl) = stop_loss {
+            body["stopLoss"] = serde_json::json!({
+                "price": format!("{:.2}", sl),
+                "timeInForce": "GTC"
+            });
+        }
+
+        if let Some(tp) = take_profit {
+            body["takeProfit"] = serde_json::json!({
+                "price": format!("{:.2}", tp),
+                "timeInForce": "GTC"
+            });
+        }
+
+        tracing::info!("Modifying trade {}: {:?}", trade_id, body);
+
+        let response = self.client
+            .put(&url)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| AppError::InternalError(format!("OANDA modify request failed: {}", e)))?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            tracing::error!("Trade modify failed: {}", error_text);
+            return Err(AppError::InternalError(format!("Trade modify failed: {}", error_text)));
+        }
+
+        tracing::info!("✅ Trade {} SL/TP modified successfully", trade_id);
+        Ok(())
+    }
+
+    /// Close a specific trade by ID
+    pub async fn close_trade(&self, trade_id: &str) -> Result<(), AppError> {
+        let url = format!(
+            "{}/v3/accounts/{}/trades/{}/close",
+            self.base_url, self.account_id, trade_id
+        );
+
+        let response = self.client
+            .put(&url)
+            .json(&serde_json::json!({}))
+            .send()
+            .await
+            .map_err(|e| AppError::InternalError(format!("OANDA close request failed: {}", e)))?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            tracing::error!("Trade close failed: {}", error_text);
+            return Err(AppError::InternalError(format!("Trade close failed: {}", error_text)));
+        }
+
+        tracing::info!("✅ Trade {} closed successfully", trade_id);
+        Ok(())
+    }
 }
 
 /// Convert lot size to OANDA units for a given instrument.

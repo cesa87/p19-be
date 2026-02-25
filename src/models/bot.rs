@@ -30,6 +30,8 @@ pub struct Bot {
     pub total_trades: Option<i32>,
     pub total_pnl: Option<f64>,
     pub cooldown_seconds: Option<i32>,
+    pub auto_disabled: Option<bool>,
+    pub direction_filter: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

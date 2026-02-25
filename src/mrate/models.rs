@@ -1549,7 +1549,6 @@ impl MrateOutput {
         category: StrategyCategory, 
         instrument: &str,
         direction: Option<&str>,  // "LONG", "SHORT", or None
-        timeframe: Option<&str>,  // "M15", "H1", "H4", "D" etc
     ) -> (bool, f64, String) {
         let base_weight = self.strategy_weights.get(category);
         let instrument_score = self.instrument_scores.get_score(instrument);
@@ -1592,42 +1591,14 @@ impl MrateOutput {
                     TradingDirection::Short => "SHORT",
                     TradingDirection::Neutral => "NEUTRAL",
                 };
-                
-                // Timeframe-aware direction filtering:
-                // - M15/M30: No filter (too short-term to care about bigger trend)
-                // - H1 MeanReversion: Reduce weight but allow
-                // - H4/D Trend/Breakout: BLOCK counter-direction trades
-                let is_short_timeframe = matches!(timeframe, Some("M15") | Some("M30"));
-                let is_trend_breakout = matches!(category, StrategyCategory::Trend | StrategyCategory::Breakout);
-                let is_long_timeframe = matches!(timeframe, Some("H4") | Some("D") | Some("D1"));
-                
-                if is_short_timeframe {
-                    // M15/M30: Allow any direction - too short-term for macro direction
-                    let reduced_weight = (inst_weight * 0.50).max(0.25);
-                    return (
-                        true,
-                        reduced_weight,
-                        format!("📊 {} M15/M30 scalp: {} against {} OK — weight {:.0}%",
-                            instrument, direction.unwrap_or("?"), dir_str, reduced_weight * 100.0)
-                    );
-                } else if is_trend_breakout && is_long_timeframe {
-                    // H4/D1 Trend/Breakout: BLOCK - must follow MRATE direction
-                    return (
-                        false,
-                        0.0,
-                        format!("🚫 {} BLOCKED: {} but MRATE says {} — H4/D Trend/Breakout must follow direction",
-                            instrument, direction.unwrap_or("?"), dir_str)
-                    );
-                } else {
-                    // H1 or MeanReversion: Reduce weight but allow
-                    let reduced_weight = (inst_weight * 0.35).max(0.20);
-                    return (
-                        true,
-                        reduced_weight,
-                        format!("⚠️ {} counter-trend: {} vs {} — reduced to {:.0}%",
-                            instrument, direction.unwrap_or("?"), dir_str, reduced_weight * 100.0)
-                    );
-                }
+                // Reduce to 25% of optimal weight, but ALLOW the trade
+                let reduced_weight = (inst_weight * 0.25).max(0.15);
+                return (
+                    true,  // ALLOW - bot's signal is authority
+                    reduced_weight,
+                    format!("⚠️ {} counter-trend: You want {} but H4 technicals say {} — reduced to {:.0}%",
+                        instrument, direction.unwrap_or("?"), dir_str, reduced_weight * 100.0)
+                );
             }
             
             return (
