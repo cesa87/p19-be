@@ -15,6 +15,7 @@ mod feeds;
 mod macro_sentiment;
 mod models;
 mod mrate;
+mod intelligence;
 mod news;
 mod risk;
 mod services;
@@ -25,6 +26,7 @@ use config::Config;
 use bot::runner::BotManager;
 use mrate::{MrateScheduler, create_mrate_state, create_mrate_engine};
 use sniper::wallet::create_wallet_store;
+use intelligence::{IntelligenceAggregator, IntelligenceScorer, ArbScanner, WhaleTracker, EventDetector};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -77,13 +79,57 @@ async fn main() -> std::io::Result<()> {
     let mrate_scheduler = MrateScheduler::new(
         mrate_engine,
         mrate_state,
-        db_pool,
-        config_inner,
+        db_pool.clone(),
+        config_inner.clone(),
         true,  // persist_history - save MRATE snapshots for analysis
     );
     tokio::spawn(async move {
         mrate_scheduler.run().await;
     });
+
+    // Initialize Intelligence Engine
+    let intel_aggregator = std::sync::Arc::new(IntelligenceAggregator::new(db_pool.clone(), std::sync::Arc::new(config_inner.clone())));
+    let intel_scorer = std::sync::Arc::new(IntelligenceScorer::new(db_pool.clone()));
+    let arb_scanner = std::sync::Arc::new(ArbScanner::new(db_pool.clone()));
+    let whale_tracker = std::sync::Arc::new(WhaleTracker::new(db_pool.clone(), config_inner.whale_alert_api_key.clone()));
+    let event_detector = std::sync::Arc::new(EventDetector::new(db_pool.clone(), intel_aggregator.clone()));
+
+    {
+        let agg = intel_aggregator.clone();
+        tokio::spawn(async move { agg.run_scheduler().await; });
+    }
+    // Scorer: runs every 5 min, reads latest snapshots from DB and re-scores
+    {
+        let scorer = intel_scorer.clone();
+        let agg = intel_aggregator.clone();
+        tokio::spawn(async move {
+            use tokio::time::{interval, Duration};
+            let mut ticker = interval(Duration::from_secs(330)); // offset by 30s after aggregator
+            loop {
+                ticker.tick().await;
+                match agg.get_latest_snapshots().await {
+                    Ok(snaps) if !snaps.is_empty() => {
+                        if let Err(e) = scorer.calculate_scores(&snaps).await {
+                            tracing::warn!("Scorer error: {}", e);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        });
+    }
+    {
+        let scanner = arb_scanner.clone();
+        tokio::spawn(async move { scanner.run_scheduler().await; });
+    }
+    {
+        let tracker = whale_tracker.clone();
+        tokio::spawn(async move { tracker.run_scheduler().await; });
+    }
+    {
+        let detector = event_detector.clone();
+        tokio::spawn(async move { detector.run_scheduler().await; });
+    }
 
     info!("Starting Aureum Backend on {}:{}", config.host, config.port);
 
@@ -139,6 +185,7 @@ async fn main() -> std::io::Result<()> {
                     .configure(api::risk::configure)
                     .configure(api::sniper::configure)
                     .configure(api::yield_farming::configure)
+                    .configure(api::intelligence::configure)
             )
     })
     .bind((host, port))?

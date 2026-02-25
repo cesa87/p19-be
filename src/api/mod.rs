@@ -15,3 +15,4 @@ pub mod sniper;
 pub mod strategies;
 pub mod trading;
 pub mod yield_farming;
+pub mod intelligence;

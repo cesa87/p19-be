@@ -36,6 +36,9 @@ pub struct Config {
     // NewsAPI (primary news source with regime detection)
     #[serde(default)]
     pub newsapi_key: Option<String>,
+    // Intelligence Engine
+    #[serde(default)]
+    pub whale_alert_api_key: Option<String>,
     // MRATE settings
     #[serde(default = "default_require_fred_for_gold")]
     pub require_fred_for_gold: bool,
