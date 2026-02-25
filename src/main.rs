@@ -26,7 +26,7 @@ use config::Config;
 use bot::runner::BotManager;
 use mrate::{MrateScheduler, create_mrate_state, create_mrate_engine};
 use sniper::wallet::create_wallet_store;
-use intelligence::{IntelligenceAggregator, IntelligenceScorer, ArbScanner, WhaleTracker, EventDetector, FeedIngester};
+use intelligence::{IntelligenceAggregator, IntelligenceScorer, ArbScanner, WhaleTracker, EventDetector, FeedIngester, FlightTracker};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -144,6 +144,19 @@ async fn main() -> std::io::Result<()> {
         });
     }
 
+
+    // Flight Tracker — polls OpenSky every 60s (ADS-B Exchange if key set)
+    {
+        let flight_tracker = FlightTracker::new(db_pool.clone(), &config_inner);
+        tokio::spawn(async move {
+            use tokio::time::{interval, Duration};
+            let mut ticker = interval(Duration::from_secs(60));
+            loop {
+                ticker.tick().await;
+                flight_tracker.poll().await;
+            }
+        });
+    }
     info!("Starting Aureum Backend on {}:{}", config.host, config.port);
 
     let host = config.host.clone();

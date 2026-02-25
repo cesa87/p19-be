@@ -159,7 +159,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/feed/sources", web::get().to(get_feed_sources))
             .route("/feed/sources", web::post().to(add_feed_source))
             .route("/feed/sources/{id}", web::delete().to(delete_feed_source))
-            .route("/feed/sources/{id}", web::patch().to(toggle_feed_source)),
+            .route("/feed/sources/{id}", web::patch().to(toggle_feed_source))
+            .route("/flights", web::get().to(get_flights)),
     );
 }
 
@@ -378,6 +379,35 @@ pub async fn get_global_tension(pool: web::Data<PgPool>) -> impl Responder {
         }
         Err(e) => {
             error!("Failed to get global tension: {}", e);
+            HttpResponse::InternalServerError().json(ErrorResponse { error: e.to_string() })
+        }
+    }
+}
+
+// ─── Flights ──────────────────────────────────────────────────────────────────
+
+use super::flights;
+
+#[derive(Deserialize)]
+struct FlightsQuery {
+    #[serde(rename = "type")]
+    aircraft_type: Option<String>,
+    limit: Option<i64>,
+}
+
+/// GET /api/intelligence/flights?type=ISR&limit=100
+pub async fn get_flights(
+    pool: web::Data<PgPool>,
+    query: web::Query<FlightsQuery>,
+) -> impl Responder {
+    let limit = query.limit.unwrap_or(200).min(500);
+    let type_filter = query.aircraft_type.as_deref()
+        .filter(|t| *t != "ALL" && !t.is_empty());
+
+    match flights::get_tracked_flights(pool.get_ref(), type_filter, limit).await {
+        Ok(f) => HttpResponse::Ok().json(f),
+        Err(e) => {
+            error!("Failed to get flights: {}", e);
             HttpResponse::InternalServerError().json(ErrorResponse { error: e.to_string() })
         }
     }

@@ -22,3 +22,5 @@ pub use settings::{get_bot_intelligence_gate, set_bot_intelligence_gate, get_gat
 pub use gate::{evaluate_gate, instrument_to_intel_key, IntelligenceGateDecision, GateAction};
 pub mod feed;
 pub use feed::{FeedIngester, FeedSource, FeedPost, FeedPostResponse};
+pub mod flights;
+pub use flights::{FlightTracker, TrackedFlight};

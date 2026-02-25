@@ -39,6 +39,9 @@ pub struct Config {
     // Intelligence Engine
     #[serde(default)]
     pub whale_alert_api_key: Option<String>,
+    // ADS-B Exchange (RapidAPI) — optional, falls back to OpenSky if absent
+    #[serde(default)]
+    pub adsbexchange_rapidapi_key: Option<String>,
     // MRATE settings
     #[serde(default = "default_require_fred_for_gold")]
     pub require_fred_for_gold: bool,
