@@ -230,6 +230,7 @@ struct FeedPostsQuery {
     limit: Option<i64>,
     source: Option<String>,
     severity: Option<String>,
+    category: Option<String>,
 }
 
 /// GET /api/intelligence/feed/posts?limit=50&source=@handle&severity=HIGH
@@ -243,6 +244,7 @@ pub async fn get_feed_posts(
         limit,
         query.source.as_deref(),
         query.severity.as_deref(),
+        query.category.as_deref(),
     )
     .await
     {
