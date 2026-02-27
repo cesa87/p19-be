@@ -156,11 +156,14 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/polymarket-settings", web::post().to(set_polymarket_setting_handler))
             .route("/global-tension", web::get().to(get_global_tension))
             .route("/feed/posts", web::get().to(get_feed_posts))
+            .route("/markets/movers", web::get().to(get_market_movers))
+            .route("/markets", web::get().to(get_markets))
             .route("/feed/sources", web::get().to(get_feed_sources))
             .route("/feed/sources", web::post().to(add_feed_source))
             .route("/feed/sources/{id}", web::delete().to(delete_feed_source))
             .route("/feed/sources/{id}", web::patch().to(toggle_feed_source))
-            .route("/flights", web::get().to(get_flights)),
+            .route("/flights", web::get().to(get_flights))
+            .route("/signals", web::get().to(get_signals)),
     );
 }
 
@@ -411,6 +414,86 @@ pub async fn get_flights(
         Err(e) => {
             error!("Failed to get flights: {}", e);
             HttpResponse::InternalServerError().json(ErrorResponse { error: e.to_string() })
+        }
+    }
+}
+
+// ─── Markets ─────────────────────────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+struct MarketsQuery {
+    category: Option<String>,
+    sort:     Option<String>,
+    limit:    Option<usize>,
+}
+
+/// GET /api/intelligence/markets?category=politics&sort=volume&limit=50
+pub async fn get_markets(
+    query: web::Query<MarketsQuery>,
+) -> impl Responder {
+    use super::markets::MarketsFetcher;
+    let fetcher  = MarketsFetcher::new();
+    let category = query.category.as_deref();
+    let sort     = query.sort.as_deref().unwrap_or("volume");
+    let limit    = query.limit.unwrap_or(50).min(200);
+
+    match fetcher.fetch(category, sort, limit).await {
+        Ok(cards) => HttpResponse::Ok().json(cards),
+        Err(e) => {
+            error!("Markets fetch failed: {}", e);
+            HttpResponse::ServiceUnavailable().json(ErrorResponse { error: e })
+        }
+    }
+}
+
+// ─── Market Movers ───────────────────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+struct MoversQuery {
+    hours: Option<i32>,
+    limit: Option<i64>,
+}
+
+/// GET /api/intelligence/markets/movers?hours=24&limit=20
+pub async fn get_market_movers(
+    query: web::Query<MoversQuery>,
+    pool: web::Data<PgPool>,
+) -> impl Responder {
+    use super::market_movers::MarketSnapshotTracker;
+    let tracker = MarketSnapshotTracker::new(pool.get_ref().clone());
+    let hours = query.hours.unwrap_or(24).max(1).min(72);
+    let limit = query.limit.unwrap_or(20).max(1).min(50);
+    match tracker.get_movers(hours, limit).await {
+        Ok(movers) => HttpResponse::Ok().json(movers),
+        Err(e) => {
+            error!("Market movers query failed: {}", e);
+            HttpResponse::ServiceUnavailable().json(ErrorResponse { error: e.to_string() })
+        }
+    }
+}
+
+// ─── Signal Intelligence ─────────────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+struct SignalsQuery {
+    hours: Option<i32>,
+    limit: Option<i64>,
+}
+
+/// GET /api/intelligence/signals?hours=6&limit=20
+pub async fn get_signals(
+    query: web::Query<SignalsQuery>,
+    pool: web::Data<PgPool>,
+) -> impl Responder {
+    use super::signal_intelligence::SignalEngine;
+    let engine = SignalEngine::new(pool.get_ref().clone());
+    let hours  = query.hours.unwrap_or(6).max(1).min(48);
+    let limit  = query.limit.unwrap_or(20).max(1).min(50);
+    match engine.get_signals(hours, limit).await {
+        Ok(signals) => HttpResponse::Ok().json(signals),
+        Err(e) => {
+            error!("Signal intelligence query failed: {}", e);
+            HttpResponse::ServiceUnavailable().json(ErrorResponse { error: e.to_string() })
         }
     }
 }

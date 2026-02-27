@@ -24,3 +24,12 @@ pub mod feed;
 pub use feed::{FeedIngester, FeedSource, FeedPost, FeedPostResponse};
 pub mod flights;
 pub use flights::{FlightTracker, TrackedFlight};
+pub mod markets;
+pub use markets::{MarketsFetcher, MarketCard, MarketOutcome};
+pub mod market_movers;
+pub use market_movers::{MarketSnapshotTracker, MarketMover};
+
+pub mod signal_intelligence;
+pub use signal_intelligence::{SignalEngine, SignalMatch, SignalPost};
+pub mod rss_ingest;
+pub use rss_ingest::{ingest_rss_sources, ingest_cryptopanic};

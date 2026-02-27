@@ -15,6 +15,7 @@ use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::config::Config;
+use super::rss_ingest;
 
 // ─── Domain types ─────────────────────────────────────────────────────────────
 
@@ -32,6 +33,7 @@ pub struct FeedSource {
     pub category: String,
     pub reliability: f64,
     pub tier: i32,
+    pub feed_url: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -145,7 +147,7 @@ Severity guidelines:
 - LOW: general commentary, noise, opinion with no clear market catalyst
 "#;
 
-async fn score_severity_openai(
+pub async fn score_severity_openai(
     http: &Client,
     api_key: &str,
     content: &str,
@@ -440,6 +442,10 @@ impl FeedIngester {
     }
 
     pub async fn ingest_all(&self) {
+        // RSS/Atom + CryptoPanic — zero API cost, fast keyword scoring
+        rss_ingest::ingest_rss_sources(&self.pool, &self.http).await;
+        rss_ingest::ingest_cryptopanic(&self.pool, &self.http).await;
+
         let sources: Vec<FeedSource> = match sqlx::query_as::<_, FeedSource>(
             "SELECT * FROM feed_sources WHERE enabled = true AND source_type = 'telegram' ORDER BY name"
         ).fetch_all(&self.pool).await {

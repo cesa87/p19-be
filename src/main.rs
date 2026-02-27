@@ -26,7 +26,7 @@ use config::Config;
 use bot::runner::BotManager;
 use mrate::{MrateScheduler, create_mrate_state, create_mrate_engine};
 use sniper::wallet::create_wallet_store;
-use intelligence::{IntelligenceAggregator, IntelligenceScorer, ArbScanner, WhaleTracker, EventDetector, FeedIngester, FlightTracker};
+use intelligence::{IntelligenceAggregator, IntelligenceScorer, ArbScanner, WhaleTracker, EventDetector, FeedIngester, FlightTracker, MarketSnapshotTracker};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -157,6 +157,15 @@ async fn main() -> std::io::Result<()> {
             }
         });
     }
+
+    // Market Snapshot Tracker — polls Polymarket every 5 min for movers data
+    {
+        let tracker = MarketSnapshotTracker::new(db_pool.clone());
+        tokio::spawn(async move {
+            tracker.run_scheduler().await;
+        });
+    }
+
     info!("Starting Aureum Backend on {}:{}", config.host, config.port);
 
     let host = config.host.clone();
