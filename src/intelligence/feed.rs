@@ -373,12 +373,9 @@ async fn ingest_newsapi(pool: &PgPool, http: &Client, api_key: &str, openai_key:
                 .map(|dt| dt.with_timezone(&Utc))
                 .unwrap_or_else(Utc::now);
 
-            let (severity, reason, markets) = if let Some(key) = openai_key {
-                score_severity_openai(http, key, &content).await
-                    .unwrap_or_else(|| ("MEDIUM".to_string(), "NewsAPI article".to_string(), vec![]))
-            } else {
-                ("MEDIUM".to_string(), "NewsAPI article".to_string(), vec![])
-            };
+            let severity = rss_ingest::quick_severity(&content).to_string();
+            let reason   = rss_ingest::severity_reason(&severity, &content);
+            let markets: Vec<String> = vec![];
 
             // Apply small jitter so articles from same country spread slightly
             let (jx, jy) = coord_jitter(&ext_id, 2.5);
@@ -486,12 +483,9 @@ impl FeedIngester {
         info!("📨 {} new posts from @{}", new_posts.len(), source.handle);
 
         for post in new_posts {
-            let (severity, reason, markets) = if let Some(key) = &self.openai_key {
-                score_severity_openai(&self.http, key, &post.content).await
-                    .unwrap_or_else(|| (source.default_severity.clone(), "Fallback scoring".to_string(), vec![]))
-            } else {
-                (source.default_severity.clone(), "No OpenAI key".to_string(), vec![])
-            };
+            let severity = rss_ingest::quick_severity(&post.content).to_string();
+            let reason   = rss_ingest::severity_reason(&severity, &post.content);
+            let markets: Vec<String> = vec![];
 
             // Geographic coordinates from source + deterministic jitter
             let (post_lat, post_lng) = match (source.latitude, source.longitude) {

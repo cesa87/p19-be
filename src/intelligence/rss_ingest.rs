@@ -541,7 +541,7 @@ fn parse_date(s: &str) -> DateTime<Utc> {
 
 // ─── Severity scoring ─────────────────────────────────────────────────────────
 
-fn quick_severity(content: &str) -> &'static str {
+pub fn quick_severity(content: &str) -> &'static str {
     let c = content.to_lowercase();
 
     // CRITICAL — systemic shocks
@@ -703,7 +703,7 @@ fn quick_severity(content: &str) -> &'static str {
     "LOW"
 }
 
-fn severity_reason(severity: &str, content: &str) -> String {
+pub fn severity_reason(severity: &str, content: &str) -> String {
     if severity == "LOW" {
         return "RSS feed item – no high-priority keywords detected".to_string();
     }

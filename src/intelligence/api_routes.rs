@@ -163,7 +163,14 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/feed/sources/{id}", web::delete().to(delete_feed_source))
             .route("/feed/sources/{id}", web::patch().to(toggle_feed_source))
             .route("/flights", web::get().to(get_flights))
-            .route("/signals", web::get().to(get_signals)),
+            .route("/signals", web::get().to(get_signals))
+            .route("/signals/history", web::get().to(get_signal_history_handler))
+            .route("/signals/{id}/close", web::patch().to(close_signal_handler))
+            .route("/whales/wallets", web::get().to(get_whale_wallets))
+            .route("/whales/wallets", web::post().to(add_whale_wallet))
+            .route("/whales/wallets/{address}", web::delete().to(remove_whale_wallet))
+            .route("/whales/trades", web::get().to(get_whale_trades))
+            .route("/whales/corroborations", web::get().to(get_whale_corroborations)),
     );
 }
 
@@ -495,5 +502,135 @@ pub async fn get_signals(
             error!("Signal intelligence query failed: {}", e);
             HttpResponse::ServiceUnavailable().json(ErrorResponse { error: e.to_string() })
         }
+    }
+}
+
+// ─── Signal History ───────────────────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+struct SignalHistoryQuery {
+    limit: Option<i64>,
+}
+
+/// GET /api/intelligence/signals/history?limit=50
+pub async fn get_signal_history_handler(
+    query: web::Query<SignalHistoryQuery>,
+    pool:  web::Data<PgPool>,
+) -> impl Responder {
+    use super::signal_tracker::SignalTracker;
+    let tracker = SignalTracker::new(pool.get_ref().clone());
+    let limit   = query.limit.unwrap_or(50).max(1).min(200);
+    match tracker.get_signal_history(limit).await {
+        Ok(signals) => HttpResponse::Ok().json(signals),
+        Err(e) => {
+            error!("Signal history query failed: {}", e);
+            HttpResponse::InternalServerError().json(ErrorResponse { error: e.to_string() })
+        }
+    }
+}
+
+/// PATCH /api/intelligence/signals/{id}/close?exit_price=0.42
+#[derive(serde::Deserialize)]
+struct CloseSignalQuery {
+    exit_price: f64,
+}
+
+pub async fn close_signal_handler(
+    path:  web::Path<uuid::Uuid>,
+    query: web::Query<CloseSignalQuery>,
+    pool:  web::Data<PgPool>,
+) -> impl Responder {
+    use super::signal_tracker::SignalTracker;
+    let tracker = SignalTracker::new(pool.get_ref().clone());
+    match tracker.close_signal(path.into_inner(), query.exit_price).await {
+        Ok(_)  => HttpResponse::Ok().json(serde_json::json!({ "success": true })),
+        Err(e) => {
+            error!("Close signal failed: {}", e);
+            HttpResponse::InternalServerError().json(ErrorResponse { error: e.to_string() })
+        }
+    }
+}
+
+// ─── Whale Tracker Routes ─────────────────────────────────────────────────────
+
+use super::polymarket_whales::WhaleFetcher;
+
+/// GET /api/intelligence/whales/wallets
+pub async fn get_whale_wallets(pool: web::Data<PgPool>) -> impl Responder {
+    let fetcher = WhaleFetcher::new(pool.get_ref().clone());
+    match fetcher.get_wallets().await {
+        Ok(wallets) => HttpResponse::Ok().json(wallets),
+        Err(e) => HttpResponse::InternalServerError().json(ErrorResponse { error: e.to_string() }),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct AddWalletRequest {
+    address:          String,
+    alias:            Option<String>,
+    win_rate_pct:     Option<f64>,
+    total_pnl_usd:    Option<f64>,
+    account_age_days: Option<i32>,
+}
+
+/// POST /api/intelligence/whales/wallets
+pub async fn add_whale_wallet(
+    pool: web::Data<PgPool>,
+    body: web::Json<AddWalletRequest>,
+) -> impl Responder {
+    let fetcher = WhaleFetcher::new(pool.get_ref().clone());
+    let alias   = body.alias.as_deref().unwrap_or(&body.address[..body.address.len().min(14)]);
+    match fetcher.add_wallet(
+        &body.address,
+        alias,
+        body.win_rate_pct.unwrap_or(0.0),
+        body.total_pnl_usd.unwrap_or(0.0),
+        body.account_age_days.unwrap_or(0),
+    ).await {
+        Ok(_)  => HttpResponse::Created().json(serde_json::json!({ "success": true })),
+        Err(e) => HttpResponse::InternalServerError().json(ErrorResponse { error: e.to_string() }),
+    }
+}
+
+/// DELETE /api/intelligence/whales/wallets/{address}
+pub async fn remove_whale_wallet(
+    pool: web::Data<PgPool>,
+    path: web::Path<String>,
+) -> impl Responder {
+    let fetcher = WhaleFetcher::new(pool.get_ref().clone());
+    match fetcher.remove_wallet(&path.into_inner()).await {
+        Ok(_)  => HttpResponse::Ok().json(serde_json::json!({ "success": true })),
+        Err(e) => HttpResponse::InternalServerError().json(ErrorResponse { error: e.to_string() }),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct WhaleTradesQuery {
+    limit: Option<i64>,
+}
+
+/// GET /api/intelligence/whales/trades?limit=50
+pub async fn get_whale_trades(
+    pool:  web::Data<PgPool>,
+    query: web::Query<WhaleTradesQuery>,
+) -> impl Responder {
+    let fetcher = WhaleFetcher::new(pool.get_ref().clone());
+    let limit   = query.limit.unwrap_or(50).min(200);
+    match fetcher.get_recent_trades(limit, false).await {
+        Ok(trades) => HttpResponse::Ok().json(trades),
+        Err(e)     => HttpResponse::InternalServerError().json(ErrorResponse { error: e.to_string() }),
+    }
+}
+
+/// GET /api/intelligence/whales/corroborations
+pub async fn get_whale_corroborations(
+    pool:  web::Data<PgPool>,
+    query: web::Query<WhaleTradesQuery>,
+) -> impl Responder {
+    let fetcher = WhaleFetcher::new(pool.get_ref().clone());
+    let limit   = query.limit.unwrap_or(50).min(200);
+    match fetcher.get_recent_trades(limit, true).await {
+        Ok(trades) => HttpResponse::Ok().json(trades),
+        Err(e)     => HttpResponse::InternalServerError().json(ErrorResponse { error: e.to_string() }),
     }
 }

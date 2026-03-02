@@ -31,5 +31,9 @@ pub use market_movers::{MarketSnapshotTracker, MarketMover};
 
 pub mod signal_intelligence;
 pub use signal_intelligence::{SignalEngine, SignalMatch, SignalPost};
+pub mod signal_tracker;
+pub use signal_tracker::{SignalTracker, PersistedSignal};
 pub mod rss_ingest;
 pub use rss_ingest::{ingest_rss_sources, ingest_cryptopanic};
+pub mod polymarket_whales;
+pub use polymarket_whales::{WhaleFetcher, WhaleTrade, TrackedWallet};

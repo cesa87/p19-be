@@ -1,0 +1,175 @@
+nohup: ignoring input
+[2m2026-02-27T15:14:11.290345Z[0m [32m INFO[0m [2maureum_backend::mrate::engine[0m[2m:[0m 📰 NewsAPI client initialized - regime event detection enabled
+[2m2026-02-27T15:14:11.323509Z[0m [32m INFO[0m [2maureum_backend::feeds::crypto[0m[2m:[0m CoinGecko API key configured
+[2m2026-02-27T15:14:11.545830Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 📊 OANDA account: balance=106975.9591, NAV=107193.1371, currency=GBP
+[2m2026-02-27T15:14:11.545872Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 💰 Portfolio Risk Engine initialized with $107193.14 equity (from OANDA)
+[2m2026-02-27T15:14:11.549017Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Auto-restarting 39 active bot(s)...
+[2m2026-02-27T15:14:11.555668Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot JPY Donchian BO M15 using timeframe: M15
+[2m2026-02-27T15:14:11.555692Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot JPY Donchian BO M15 has MRATE category: Some(Breakout)
+[2m2026-02-27T15:14:11.555735Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: JPY Donchian BO M15 (6cd4127e-a716-4eff-81e6-63758a945ddc)
+[2m2026-02-27T15:14:11.555762Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot JPY Donchian BO M15 (6cd4127e-a716-4eff-81e6-63758a945ddc) starting...
+[2m2026-02-27T15:14:11.556951Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot JPY Bollinger MR H1 using timeframe: H1
+[2m2026-02-27T15:14:11.557019Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: JPY Bollinger MR H1 (901c7820-0947-4bb1-944b-ceb344895608)
+[2m2026-02-27T15:14:11.557036Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot JPY Bollinger MR H1 (901c7820-0947-4bb1-944b-ceb344895608) starting...
+[2m2026-02-27T15:14:11.559195Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot EUR EMA Ribbon M15 using timeframe: M15
+[2m2026-02-27T15:14:11.559202Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot EUR EMA Ribbon M15 has MRATE category: Some(Trend)
+[2m2026-02-27T15:14:11.559230Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: EUR EMA Ribbon M15 (47f85108-8400-4652-9147-6c9dd838e614)
+[2m2026-02-27T15:14:11.559243Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot EUR EMA Ribbon M15 (47f85108-8400-4652-9147-6c9dd838e614) starting...
+[2m2026-02-27T15:14:11.562261Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold EMA Ribbon M15 using timeframe: M15
+[2m2026-02-27T15:14:11.562315Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: Gold EMA Ribbon M15 (44e89400-ca87-41d0-86fe-5efc94cd5fe1)
+[2m2026-02-27T15:14:11.562338Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot Gold EMA Ribbon M15 (44e89400-ca87-41d0-86fe-5efc94cd5fe1) starting...
+[2m2026-02-27T15:14:11.576883Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot JPY Donchian BO M15 using cooldown: 300s
+[2m2026-02-27T15:14:11.577194Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot JPY ADX Trend H1 using timeframe: H1
+[2m2026-02-27T15:14:11.577201Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot JPY ADX Trend H1 has MRATE category: Some(Trend)
+[2m2026-02-27T15:14:11.577235Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: JPY ADX Trend H1 (bdbdf0e3-cb06-4b04-958e-169cf2b4da17)
+[2m2026-02-27T15:14:11.588278Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold EMA Ribbon M15 using cooldown: 900s
+[2m2026-02-27T15:14:11.599473Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot JPY Bollinger MR H1 using cooldown: 300s
+[2m2026-02-27T15:14:11.599556Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot JPY ADX Trend H1 (bdbdf0e3-cb06-4b04-958e-169cf2b4da17) starting...
+[2m2026-02-27T15:14:11.610781Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot EUR EMA Ribbon M15 using cooldown: 300s
+[2m2026-02-27T15:14:11.612507Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot JPY London BO H1 using timeframe: H1
+[2m2026-02-27T15:14:11.612519Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot JPY London BO H1 has MRATE category: Some(Breakout)
+[2m2026-02-27T15:14:11.612548Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: JPY London BO H1 (ffa8941c-4135-4ade-91b3-ea8461de8469)
+[2m2026-02-27T15:14:11.612561Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot JPY London BO H1 (ffa8941c-4135-4ade-91b3-ea8461de8469) starting...
+[2m2026-02-27T15:14:11.624358Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot JPY ADX Trend H1 using cooldown: 300s
+[2m2026-02-27T15:14:11.636582Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot JPY London BO H1 using cooldown: 300s
+[2m2026-02-27T15:14:11.641101Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot JPY Triple Screen M15 using timeframe: M15
+[2m2026-02-27T15:14:11.641126Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot JPY Triple Screen M15 has MRATE category: Some(Trend)
+[2m2026-02-27T15:14:11.641158Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: JPY Triple Screen M15 (b212be3a-375e-4666-be7c-a37ad828ce04)
+[2m2026-02-27T15:14:11.641230Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot JPY Triple Screen M15 (b212be3a-375e-4666-be7c-a37ad828ce04) starting...
+[2m2026-02-27T15:14:11.643286Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot NatGas London NY H1 using timeframe: H1
+[2m2026-02-27T15:14:11.643311Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot NatGas London NY H1 has MRATE category: Some(Trend)
+[2m2026-02-27T15:14:11.643356Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: NatGas London NY H1 (cfe25049-8c86-4e99-bbaa-2db262da7d2b)
+[2m2026-02-27T15:14:11.654839Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot JPY Triple Screen M15 using cooldown: 300s
+[2m2026-02-27T15:14:11.654911Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot NatGas London NY H1 (cfe25049-8c86-4e99-bbaa-2db262da7d2b) starting...
+[2m2026-02-27T15:14:11.657909Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold Trendline Daily using timeframe: D
+[2m2026-02-27T15:14:11.657957Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: Gold Trendline Daily (cd206081-e2bc-4dc3-abec-a5869634d79d)
+[2m2026-02-27T15:14:11.657980Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot Gold Trendline Daily (cd206081-e2bc-4dc3-abec-a5869634d79d) starting...
+[2m2026-02-27T15:14:11.660435Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold Triple Screen H4 using timeframe: H4
+[2m2026-02-27T15:14:11.660481Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: Gold Triple Screen H4 (6d107fa4-024a-4619-a89d-ae9c99aa605e)
+[2m2026-02-27T15:14:11.672238Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot NatGas London NY H1 using cooldown: 300s
+[2m2026-02-27T15:14:11.683717Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold Trendline Daily using cooldown: 300s
+[2m2026-02-27T15:14:11.683799Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot Gold Triple Screen H4 (6d107fa4-024a-4619-a89d-ae9c99aa605e) starting...
+[2m2026-02-27T15:14:11.686198Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot BTC Bollinger MR H1 using timeframe: H1
+[2m2026-02-27T15:14:11.686248Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: BTC Bollinger MR H1 (92f12994-d297-4999-93be-3d7194ec8960)
+[2m2026-02-27T15:14:11.686296Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot BTC Bollinger MR H1 (92f12994-d297-4999-93be-3d7194ec8960) starting...
+[2m2026-02-27T15:14:11.698547Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold Triple Screen H4 using cooldown: 300s
+[2m2026-02-27T15:14:11.710373Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot BTC Bollinger MR H1 using cooldown: 300s
+[2m2026-02-27T15:14:11.712968Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot JPY Bollinger MR M15 using timeframe: M15
+[2m2026-02-27T15:14:11.713020Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: JPY Bollinger MR M15 (7cd69aad-25ee-4f14-a127-f3e44540cd64)
+[2m2026-02-27T15:14:11.713097Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot JPY Bollinger MR M15 (7cd69aad-25ee-4f14-a127-f3e44540cd64) starting...
+[2m2026-02-27T15:14:11.714872Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold Donchian Breakout M15 using timeframe: M15
+[2m2026-02-27T15:14:11.714884Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold Donchian Breakout M15 has MRATE category: Some(Breakout)
+[2m2026-02-27T15:14:11.714941Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: Gold Donchian Breakout M15 (24057119-452f-42ff-8820-a47746af3fa4)
+[2m2026-02-27T15:14:11.714959Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot Gold Donchian Breakout M15 (24057119-452f-42ff-8820-a47746af3fa4) starting...
+[2m2026-02-27T15:14:11.726255Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot JPY Bollinger MR M15 using cooldown: 300s
+[2m2026-02-27T15:14:11.739891Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold Donchian Breakout M15 using cooldown: 900s
+[2m2026-02-27T15:14:11.740284Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold RSI Reversion H1 using timeframe: H1
+[2m2026-02-27T15:14:11.740320Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: Gold RSI Reversion H1 (15d242e4-26c2-4caf-bc8b-2ee42ee108e4)
+[2m2026-02-27T15:14:11.741526Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot Gold RSI Reversion H1 (15d242e4-26c2-4caf-bc8b-2ee42ee108e4) starting...
+[2m2026-02-27T15:14:11.742609Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold Triple Screen M15 using timeframe: M15
+[2m2026-02-27T15:14:11.742645Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: Gold Triple Screen M15 (62ff0517-1103-4b7d-bca7-74f1d371fa77)
+[2m2026-02-27T15:14:11.742660Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot Gold Triple Screen M15 (62ff0517-1103-4b7d-bca7-74f1d371fa77) starting...
+[2m2026-02-27T15:14:11.754860Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold RSI Reversion H1 using cooldown: 300s
+[2m2026-02-27T15:14:11.766507Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold Triple Screen M15 using cooldown: 300s
+[2m2026-02-27T15:14:11.768012Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot NAS100 Bollinger MR H1 using timeframe: H1
+[2m2026-02-27T15:14:11.768051Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: NAS100 Bollinger MR H1 (ba5ffe96-f26b-494f-9136-5e14cbe59286)
+[2m2026-02-27T15:14:11.769279Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot NAS100 Bollinger MR H1 (ba5ffe96-f26b-494f-9136-5e14cbe59286) starting...
+[2m2026-02-27T15:14:11.770285Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold Bollinger MR H1 using timeframe: H1
+[2m2026-02-27T15:14:11.770322Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: Gold Bollinger MR H1 (8c1cb90a-e1f8-4067-9de8-6ffa8c8383b6)
+[2m2026-02-27T15:14:11.770335Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot Gold Bollinger MR H1 (8c1cb90a-e1f8-4067-9de8-6ffa8c8383b6) starting...
+[2m2026-02-27T15:14:11.771726Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold Stochastic H1 using timeframe: H1
+[2m2026-02-27T15:14:11.771797Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: Gold Stochastic H1 (0eafdac4-3954-4879-8886-32f031ca18bd)
+[2m2026-02-27T15:14:11.783258Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot NAS100 Bollinger MR H1 using cooldown: 300s
+[2m2026-02-27T15:14:11.783654Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot Gold Stochastic H1 (0eafdac4-3954-4879-8886-32f031ca18bd) starting...
+[2m2026-02-27T15:14:11.794856Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold Bollinger MR H1 using cooldown: 300s
+[2m2026-02-27T15:14:11.798307Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold EMA Ribbon H1 using timeframe: H1
+[2m2026-02-27T15:14:11.798366Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: Gold EMA Ribbon H1 (94e5d0fb-86c5-47ad-a820-cb8b5d49795b)
+[2m2026-02-27T15:14:11.809931Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold Stochastic H1 using cooldown: 300s
+[2m2026-02-27T15:14:11.810005Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot Gold EMA Ribbon H1 (94e5d0fb-86c5-47ad-a820-cb8b5d49795b) starting...
+[2m2026-02-27T15:14:11.811837Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot EUR Bollinger MR M15 using timeframe: M15
+[2m2026-02-27T15:14:11.811883Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: EUR Bollinger MR M15 (561643a5-3a75-43af-9692-b9d1aa6be857)
+[2m2026-02-27T15:14:11.811912Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot EUR Bollinger MR M15 (561643a5-3a75-43af-9692-b9d1aa6be857) starting...
+[2m2026-02-27T15:14:11.823881Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold EMA Ribbon H1 using cooldown: 600s
+[2m2026-02-27T15:14:11.837915Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot EUR Bollinger MR M15 using cooldown: 300s
+[2m2026-02-27T15:14:11.840498Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Oil Bollinger MR H1 using timeframe: H1
+[2m2026-02-27T15:14:11.840554Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: Oil Bollinger MR H1 (ea3f37d8-752f-4866-b8e4-2752dda2aae5)
+[2m2026-02-27T15:14:11.840598Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot Oil Bollinger MR H1 (ea3f37d8-752f-4866-b8e4-2752dda2aae5) starting...
+[2m2026-02-27T15:14:11.843505Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot NatGas Forecast H1 using timeframe: H1
+[2m2026-02-27T15:14:11.843518Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot NatGas Forecast H1 has MRATE category: Some(Trend)
+[2m2026-02-27T15:14:11.843562Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: NatGas Forecast H1 (66cebb81-86f1-4322-8e14-6cf45c8edb92)
+[2m2026-02-27T15:14:11.843580Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot NatGas Forecast H1 (66cebb81-86f1-4322-8e14-6cf45c8edb92) starting...
+[2m2026-02-27T15:14:11.855374Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Oil Bollinger MR H1 using cooldown: 300s
+[2m2026-02-27T15:14:11.860011Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold MACD Divergence H1 using timeframe: H1
+[2m2026-02-27T15:14:11.860050Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: Gold MACD Divergence H1 (d25c78da-dd75-4c6d-bfde-781a7ef00932)
+[2m2026-02-27T15:14:11.860071Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot Gold MACD Divergence H1 (d25c78da-dd75-4c6d-bfde-781a7ef00932) starting...
+[2m2026-02-27T15:14:11.872172Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot NatGas Forecast H1 using cooldown: 300s
+[2m2026-02-27T15:14:11.874927Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot JPY ADX Trend M15 using timeframe: M15
+[2m2026-02-27T15:14:11.874943Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot JPY ADX Trend M15 has MRATE category: Some(Trend)
+[2m2026-02-27T15:14:11.874980Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: JPY ADX Trend M15 (026e87be-dedc-430c-8422-857094954d78)
+[2m2026-02-27T15:14:11.886597Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold MACD Divergence H1 using cooldown: 300s
+[2m2026-02-27T15:14:11.886670Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot JPY ADX Trend M15 (026e87be-dedc-430c-8422-857094954d78) starting...
+[2m2026-02-27T15:14:11.903522Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot JPY ADX Trend M15 using cooldown: 300s
+[2m2026-02-27T15:14:11.905807Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold ADX Trend M15 using timeframe: M15
+[2m2026-02-27T15:14:11.905854Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: Gold ADX Trend M15 (ce318bfe-b724-494e-a8c0-aae71855b932)
+[2m2026-02-27T15:14:11.905867Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot Gold ADX Trend M15 (ce318bfe-b724-494e-a8c0-aae71855b932) starting...
+[2m2026-02-27T15:14:11.921404Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold ADX Trend M15 using cooldown: 900s
+[2m2026-02-27T15:14:11.921718Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Oil Stochastic H1 using timeframe: H1
+[2m2026-02-27T15:14:11.921750Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: Oil Stochastic H1 (812e13d1-d426-4e3a-b72f-19c0e4c3ae77)
+[2m2026-02-27T15:14:11.923042Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot Oil Stochastic H1 (812e13d1-d426-4e3a-b72f-19c0e4c3ae77) starting...
+[2m2026-02-27T15:14:11.926788Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Real Yield Mom H4 using timeframe: H4
+[2m2026-02-27T15:14:11.926836Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: Real Yield Mom H4 (2c3b0cbb-597e-48d9-b099-c614182d6860)
+[2m2026-02-27T15:14:11.938630Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Oil Stochastic H1 using cooldown: 300s
+[2m2026-02-27T15:14:11.938705Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot Real Yield Mom H4 (2c3b0cbb-597e-48d9-b099-c614182d6860) starting...
+[2m2026-02-27T15:14:11.954959Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Real Yield Mom H4 using cooldown: 300s
+[2m2026-02-27T15:14:11.957699Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold Asian RSI Reversion H1 using timeframe: H1
+[2m2026-02-27T15:14:11.957738Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: Gold Asian RSI Reversion H1 (cb083586-43ba-423b-861b-f60220821800)
+[2m2026-02-27T15:14:11.957749Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot Gold Asian RSI Reversion H1 (cb083586-43ba-423b-861b-f60220821800) starting...
+[2m2026-02-27T15:14:11.973261Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold Asian RSI Reversion H1 using cooldown: 300s
+[2m2026-02-27T15:14:11.975862Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Quant Gold Momentum RSI Over M5 using timeframe: M5
+[2m2026-02-27T15:14:11.975915Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: Quant Gold Momentum RSI Over M5 (67d7cd32-dee6-487d-bf46-ef5861e5bf47)
+[2m2026-02-27T15:14:11.975945Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot Quant Gold Momentum RSI Over M5 (67d7cd32-dee6-487d-bf46-ef5861e5bf47) starting...
+[2m2026-02-27T15:14:11.993527Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Quant Gold Momentum RSI Over M5 using cooldown: 300s
+[2m2026-02-27T15:14:11.994734Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot NatGas ADX Trend H1 using timeframe: H1
+[2m2026-02-27T15:14:11.994748Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot NatGas ADX Trend H1 has MRATE category: Some(Trend)
+[2m2026-02-27T15:14:11.994773Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: NatGas ADX Trend H1 (398e0499-ae16-42b8-8dac-08a9c49c46c8)
+[2m2026-02-27T15:14:11.994814Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot NatGas ADX Trend H1 (398e0499-ae16-42b8-8dac-08a9c49c46c8) starting...
+[2m2026-02-27T15:14:12.011728Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot NatGas ADX Trend H1 using cooldown: 300s
+[2m2026-02-27T15:14:12.014630Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot MRATE Gold M15 using timeframe: M15
+[2m2026-02-27T15:14:12.014674Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: MRATE Gold M15 (28834cfb-c37a-4005-905c-1f92de8063c4)
+[2m2026-02-27T15:14:12.014691Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot MRATE Gold M15 (28834cfb-c37a-4005-905c-1f92de8063c4) starting...
+[2m2026-02-27T15:14:12.033352Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot MRATE Gold M15 using cooldown: 300s
+[2m2026-02-27T15:14:12.034947Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Quant Gold Momentum BTC M15 using timeframe: M15
+[2m2026-02-27T15:14:12.034985Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: Quant Gold Momentum BTC M15 (3015c5e0-b957-4cc9-be9b-01d93d94a6c2)
+[2m2026-02-27T15:14:12.034999Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot Quant Gold Momentum BTC M15 (3015c5e0-b957-4cc9-be9b-01d93d94a6c2) starting...
+[2m2026-02-27T15:14:12.053544Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Quant Gold Momentum BTC M15 using cooldown: 300s
+[2m2026-02-27T15:14:12.056679Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold Macro-Aligned Momentum H4 using timeframe: H4
+[2m2026-02-27T15:14:12.056733Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: Gold Macro-Aligned Momentum H4 (dfd8878e-89d7-408b-b569-ea8e54fa7c57)
+[2m2026-02-27T15:14:12.056963Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot Gold Macro-Aligned Momentum H4 (dfd8878e-89d7-408b-b569-ea8e54fa7c57) starting...
+[2m2026-02-27T15:14:12.072784Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold Macro-Aligned Momentum H4 using cooldown: 300s
+[2m2026-02-27T15:14:12.075078Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold Panic Safe Haven H4 using timeframe: H4
+[2m2026-02-27T15:14:12.075134Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: Gold Panic Safe Haven H4 (b43bd638-2279-4cc3-bafd-0a33b57e0b1d)
+[2m2026-02-27T15:14:12.075156Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot Gold Panic Safe Haven H4 (b43bd638-2279-4cc3-bafd-0a33b57e0b1d) starting...
+[2m2026-02-27T15:14:12.091372Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold Panic Safe Haven H4 using cooldown: 300s
+[2m2026-02-27T15:14:12.094885Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold Risk-Off DXY Divergence H4 using timeframe: H4
+[2m2026-02-27T15:14:12.094932Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: Gold Risk-Off DXY Divergence H4 (3dd110ff-2090-4eec-ac95-bb560e3c16a9)
+[2m2026-02-27T15:14:12.094952Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot Gold Risk-Off DXY Divergence H4 (3dd110ff-2090-4eec-ac95-bb560e3c16a9) starting...
+[2m2026-02-27T15:14:12.111595Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Gold Risk-Off DXY Divergence H4 using cooldown: 300s
+[2m2026-02-27T15:14:12.114411Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Quant Gold Momentum M5 using timeframe: M5
+[2m2026-02-27T15:14:12.114451Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: Quant Gold Momentum M5 (687222ae-58d5-42a1-bc99-18359a2bcba9)
+[2m2026-02-27T15:14:12.114462Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot Quant Gold Momentum M5 (687222ae-58d5-42a1-bc99-18359a2bcba9) starting...
+[2m2026-02-27T15:14:12.130828Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot Quant Gold Momentum M5 using cooldown: 300s
+[2m2026-02-27T15:14:12.134541Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot London NY Gold Trend M5 using timeframe: M5
+[2m2026-02-27T15:14:12.134621Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: London NY Gold Trend M5 (34a21f35-01f0-4913-9980-b3ed9eba1a68)
+[2m2026-02-27T15:14:12.134684Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot London NY Gold Trend M5 (34a21f35-01f0-4913-9980-b3ed9eba1a68) starting...
+[2m2026-02-27T15:14:12.139528Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🔄 Found 1 orphaned trade_context records, reconciling...
+[2m2026-02-27T15:14:12.154150Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot London NY Gold Trend M5 using cooldown: 300s
+[2m2026-02-27T15:14:12.156870Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot NatGas Bollinger MR H1 using timeframe: H1
+[2m2026-02-27T15:14:12.156916Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: NatGas Bollinger MR H1 (615dd3e1-fc49-49c4-b2d8-26376cbb544e)
+[2m2026-02-27T15:14:12.156928Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Bot NatGas Bollinger MR H1 (615dd3e1-fc49-49c4-b2d8-26376cbb544e) starting...
+[2m2026-02-27T15:14:12.176375Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot NatGas Bollinger MR H1 using cooldown: 300s
+[2m2026-02-27T15:14:12.178916Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m Bot NatGas Bollinger MR M15 using timeframe: M15
+[2m2026-02-27T15:14:12.178955Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m ✅ Auto-restarted bot: NatGas Bollinger MR M15 (565efa73-a739-4f9c-818c-a4c822fbc77c)
+[2m2026-02-27T15:14:12.178960Z[0m [32m INFO[0m [2maureum_backend::bot::runner[0m[2m:[0m 🤖 Auto-restart complete: 39/39 bots started
+[2m2026-02-27T15:14:12.178963Z[0m [32m INFO[0m [2maureum_backend[0m[2m:[0m 🤖 Auto-restarted 39 bot(s) from previous session
+[2m2026-02-27T15:14:12.212757Z[0m [32m INFO[0m [2maureum_backend[0m[2m:[0m Starting Aureum Backend on 0.0.0.0:8080
+Error: Os { code: 98, kind: AddrInUse, message: "Address already in use" }

@@ -26,7 +26,7 @@ use config::Config;
 use bot::runner::BotManager;
 use mrate::{MrateScheduler, create_mrate_state, create_mrate_engine};
 use sniper::wallet::create_wallet_store;
-use intelligence::{IntelligenceAggregator, IntelligenceScorer, ArbScanner, WhaleTracker, EventDetector, FeedIngester, FlightTracker, MarketSnapshotTracker};
+use intelligence::{IntelligenceAggregator, IntelligenceScorer, ArbScanner, WhaleTracker, EventDetector, FeedIngester, FlightTracker, MarketSnapshotTracker, SignalEngine, SignalTracker, WhaleFetcher};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -163,6 +163,49 @@ async fn main() -> std::io::Result<()> {
         let tracker = MarketSnapshotTracker::new(db_pool.clone());
         tokio::spawn(async move {
             tracker.run_scheduler().await;
+        });
+    }
+
+    // Polymarket Whale Tracker — polls tracked wallets every 5 min for corroborating trades
+    {
+        let whale_pool = db_pool.clone();
+        tokio::spawn(async move {
+            use tokio::time::{interval, Duration};
+            let fetcher = WhaleFetcher::new(whale_pool);
+            // Offset 2 min after signal tracker to avoid thundering herd
+            tokio::time::sleep(Duration::from_secs(120)).await;
+            let mut ticker = interval(Duration::from_secs(300));
+            loop {
+                ticker.tick().await;
+                fetcher.poll_all().await;
+            }
+        });
+    }
+
+    // Signal Tracker — runs SignalEngine every 5 min, persists auto-eligible signals + refreshes P&L
+    {
+        let sig_pool  = db_pool.clone();
+        tokio::spawn(async move {
+            use tokio::time::{interval, Duration};
+            let engine  = SignalEngine::new(sig_pool.clone());
+            let tracker = SignalTracker::new(sig_pool);
+            // Offset 90s from Market Snapshot so prices are fresh when we scan
+            tokio::time::sleep(Duration::from_secs(90)).await;
+            let mut ticker = interval(Duration::from_secs(300));
+            loop {
+                ticker.tick().await;
+                // Persist new auto-eligible signals
+                match engine.get_signals(6, 50).await {
+                    Ok(signals) => {
+                        for s in signals.iter().filter(|s| s.auto_eligible) {
+                            tracker.persist_signal(s).await;
+                        }
+                    }
+                    Err(e) => tracing::warn!("Signal scan failed: {}", e),
+                }
+                // Refresh current prices + P&L for all OPEN signals
+                tracker.update_current_prices().await;
+            }
         });
     }
 

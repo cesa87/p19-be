@@ -25,6 +25,7 @@ pub struct SignalPost {
 #[derive(Debug, Clone, Serialize)]
 pub struct SignalMatch {
     pub market_id:         String,
+    pub condition_id:      String,
     pub market_title:      String,
     pub market_url:        String,
     pub image_url:         Option<String>,
@@ -44,12 +45,19 @@ pub struct SignalMatch {
     pub signal_posts:      Vec<SignalPost>,
     /// ISO timestamp of the earliest matching post
     pub first_signal_at:   String,
+    /// Directional recommendation: "YES" / "NO" / "NONE"
+    pub recommended_side:  String,
+    /// 0-100 confidence combining match_score + directional clarity
+    pub confidence_pct:    f64,
+    /// True when eligible for auto-execution
+    pub auto_eligible:     bool,
 }
 
 // ─── Internal query rows ──────────────────────────────────────────────────────
 
 struct MarketRow {
     market_id:       String,
+    condition_id:    String,
     title:           String,
     outcome_name:    String,
     price:           f64,
@@ -160,8 +168,17 @@ impl SignalEngine {
                 source_url:        p.source_url.clone(),
             }).collect();
 
+            let rounded_score = (score * 10.0).round() / 10.0;
+            let (recommended_side, directional_clarity) = infer_side(&hits);
+            let confidence_pct = compute_confidence(rounded_score, directional_clarity);
+            let auto_eligible = rounded_score >= 25.0
+                && recommended_side != "NONE"
+                && market.price_stable
+                && market.price <= 0.70;
+
             matches.push(SignalMatch {
                 market_id:        market.market_id.clone(),
+                condition_id:     market.condition_id.clone(),
                 market_title:     market.title.clone(),
                 market_url:       market.url.clone().unwrap_or_default(),
                 image_url:        market.image_url.clone(),
@@ -169,11 +186,14 @@ impl SignalEngine {
                 current_price:    market.price,
                 price_change_24h: market.price_change_24h,
                 price_stable:     market.price_stable,
-                match_score:      (score * 10.0).round() / 10.0,
+                match_score:      rounded_score,
                 matched_keywords: all_hit_kws,
                 source_count:     num_posts,
                 signal_posts,
                 first_signal_at:  first_post.0.posted_at.to_rfc3339(),
+                recommended_side,
+                confidence_pct,
+                auto_eligible,
             });
         }
 
@@ -190,7 +210,7 @@ impl SignalEngine {
         let rows = sqlx::query(r#"
             WITH latest AS (
                 SELECT DISTINCT ON (market_id, outcome_name)
-                    market_id, title, outcome_name, price, image_url, url
+                    market_id, condition_id, title, outcome_name, price, image_url, url
                 FROM market_snapshots
                 ORDER BY market_id, outcome_name, captured_at DESC
             ),
@@ -223,6 +243,7 @@ impl SignalEngine {
 
         Ok(rows.into_iter().map(|r| MarketRow {
             market_id:       r.try_get("market_id").unwrap_or_default(),
+            condition_id:    r.try_get("condition_id").unwrap_or_default(),
             title:           r.try_get("title").unwrap_or_default(),
             outcome_name:    r.try_get("outcome_name").unwrap_or_default(),
             price:           r.try_get("price").unwrap_or(0.0),
@@ -336,4 +357,72 @@ fn compute_score(
     let corroboration = 1.0 + (num_posts as f64 - 1.0).max(0.0) * 0.25;
 
     coverage * recency * quality * window * corroboration * 100.0
+}
+
+// ─── Directional Inference ────────────────────────────────────────────────────
+
+const YES_TRIGGERS: &[&str] = &[
+    "confirmed", "breaking", "reports of", "occurred", "launched", "signed",
+    "approved", "hit", "reached", "announced", "deployed", "arrested",
+    "killed", "fired", "struck", "exploded", "collapsed", "declared",
+    "elected", "passed", "won", "victory", "surge", "attack confirmed",
+    "invasion", "offensive", "offensive launched",
+];
+
+const NO_TRIGGERS: &[&str] = &[
+    "denied", "failed", "no evidence", "contradicts", "cancelled", "avoided",
+    "prevented", "ceasefire", "peace deal", "no reports", "unconfirmed",
+    "debunked", "false", "retracted", "withdrawn", "called off", "suspended",
+    "postponed", "dismissed",
+];
+
+/// Infer directional side (YES / NO / NONE) from matched feed posts.
+/// Returns (side, directional_clarity) where clarity is 0.0–1.0.
+fn infer_side(hits: &[(&PostRow, Vec<String>)]) -> (String, f64) {
+    let mut yes_score = 0.0f64;
+    let mut no_score  = 0.0f64;
+
+    for (post, _) in hits {
+        let c = post.content.to_lowercase();
+        let weight = post.reliability;
+
+        for t in YES_TRIGGERS {
+            if c.contains(t) { yes_score += weight; }
+        }
+        for t in NO_TRIGGERS {
+            if c.contains(t) { no_score += weight; }
+        }
+        // Severity bonus: HIGH/CRITICAL posts strongly suggest the event is happening
+        match post.severity.as_str() {
+            "CRITICAL" => yes_score += weight * 0.8,
+            "HIGH"     => yes_score += weight * 0.4,
+            _          => {}
+        }
+    }
+
+    let total = yes_score + no_score;
+    if total < 0.5 {
+        return ("NONE".to_string(), 0.0);
+    }
+
+    let yes_ratio = yes_score / total;
+    let no_ratio  = no_score  / total;
+
+    // Require a clear winner — must be at least 60% dominant
+    if yes_ratio >= 0.60 {
+        ("YES".to_string(), yes_ratio)
+    } else if no_ratio >= 0.60 {
+        ("NO".to_string(), no_ratio)
+    } else {
+        ("NONE".to_string(), 0.0)
+    }
+}
+
+/// Combine match_score and directional clarity into a 0-100 confidence value.
+fn compute_confidence(match_score: f64, directional_clarity: f64) -> f64 {
+    if directional_clarity == 0.0 {
+        return 0.0;
+    }
+    let base = (match_score / 100.0).clamp(0.0, 1.0);
+    ((base * 0.6 + directional_clarity * 0.4) * 100.0 * 10.0).round() / 10.0
 }
