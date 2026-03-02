@@ -337,11 +337,6 @@ impl BotRunner {
         let mut ticker = interval(Duration::from_secs(30));
         let mut last_signal_time: Option<std::time::Instant> = None;
         let mut last_equity_update: Option<std::time::Instant> = None;
-
-        // MRATE global enable flag cache (avoid DB read every tick).
-        // When disabled, MRATE MUST have ZERO effect on trading decisions.
-        let mut mrate_enabled_cache: bool = true;
-        let mut last_mrate_enabled_check: Option<std::time::Instant> = None;
         
         // Cooldown priority: bot setting > strategy param > default (5 min)
         let cooldown_seconds = self.cooldown_seconds
@@ -373,22 +368,6 @@ impl BotRunner {
             if let Err(e) = self.manage_trailing_stops(&client).await {
                 tracing::warn!("Trailing stop management error: {}", e);
             }
-
-            // MRATE global enable toggle.
-            // Important: when MRATE is disabled, bots must NOT use MRATE for:
-            // - signal generation (weights / regime-driven strategies)
-            // - learning multiplier (regime/session segmentation that changes confidence/size)
-            // - lot sizing boosts
-            // - SL/TP adjustments (DTE / D1 ATR stops)
-            let mrate_enabled = match last_mrate_enabled_check {
-                Some(t) if t.elapsed() < std::time::Duration::from_secs(60) => mrate_enabled_cache,
-                _ => {
-                    let enabled = crate::mrate::is_mrate_enabled(&self.pool).await;
-                    mrate_enabled_cache = enabled;
-                    last_mrate_enabled_check = Some(std::time::Instant::now());
-                    enabled
-                }
-            };
             
             // ═══════════════════════════════════════════════════════════════════
             // AI AUTO-CLOSE - Act on CloseNow recommendations from TradeAnalyzer
@@ -398,12 +377,8 @@ impl BotRunner {
                 .unwrap_or(true);
             
             if auto_manage {
-                if mrate_enabled {
-                    if let Err(e) = self.ai_auto_manage(&client).await {
-                        tracing::warn!("AI auto-manage error: {}", e);
-                    }
-                } else {
-                    tracing::debug!("MRATE disabled — skipping AI auto-manage (TradeAnalyzer depends on MRATE)");
+                if let Err(e) = self.ai_auto_manage(&client).await {
+                    tracing::warn!("AI auto-manage error: {}", e);
                 }
             }
             
@@ -473,19 +448,13 @@ impl BotRunner {
             // Get current price
             let current_price = candles.last().map(|c| c.close).unwrap_or(0.0);
             
-            // Fetch MRATE data (used for both weight relaxation and regime-driven strategies).
-            // When MRATE is globally disabled, this MUST be None (observation-only).
-            let mrate_output = if mrate_enabled { self.fetch_mrate().await } else { None };
+            // Fetch MRATE data (used for both weight relaxation and regime-driven strategies)
+            let mrate_output = self.fetch_mrate().await;
             let mrate_ref = mrate_output.as_ref();
             
-            // Get MRATE weight for threshold relaxation (if category is set).
-            // When MRATE is disabled, do not apply weights.
-            let mrate_weight = if mrate_enabled {
-                if let Some(category) = self.mrate_category {
-                    mrate_ref.map(|m| m.strategy_weights.get(category))
-                } else {
-                    None
-                }
+            // Get MRATE weight for threshold relaxation (if category is set)
+            let mrate_weight = if let Some(category) = self.mrate_category {
+                mrate_ref.map(|m| m.strategy_weights.get(category))
             } else {
                 None
             };
@@ -682,54 +651,45 @@ impl BotRunner {
                 // ═══════════════════════════════════════════════════════════════════
                 let tf_tier = TimeframeTier::from_timeframe(&self.timeframe);
                 let mut mrate_lot_multiplier = 1.0;
-                let mrate_output = if mrate_enabled {
-                    self.fetch_mrate().await.unwrap_or_else(default_mrate_output)
-                } else {
-                    // Provide a neutral placeholder, but do NOT apply its regime/thresholds anywhere when disabled.
-                    default_mrate_output()
+                let mrate_output = self.fetch_mrate().await.unwrap_or_else(default_mrate_output);
+                // ═══════════════════════════════════════════════════════════════════
+                let regime_str = mrate_output.regime.as_str();
+                let hour = chrono::Utc::now().hour();
+                let session_str = match hour {
+                    0..=7 => "ASIAN",
+                    8..=11 => "LONDON",
+                    12..=15 => "OVERLAP",
+                    16..=21 => "NEW_YORK",
+                    _ => "OFF_HOURS",
                 };
-                // ═══════════════════════════════════════════════════════════════════
-                if mrate_enabled {
-                // ═══════════════════════════════════════════════════════════════════
-                    let regime_str = mrate_output.regime.as_str();
-                    let hour = chrono::Utc::now().hour();
-                    let session_str = match hour {
-                        0..=7 => "ASIAN",
-                        8..=11 => "LONDON",
-                        12..=15 => "OVERLAP",
-                        16..=21 => "NEW_YORK",
-                        _ => "OFF_HOURS",
-                    };
-                    let learning = calculate_learning_multiplier(
-                        &self.pool, self.bot_id, regime_str, session_str
-                    ).await;
-                    
-                    if learning.has_sufficient_data {
-                        signal_result.confidence = (signal_result.confidence * learning.confidence_mult).clamp(0.0, 1.0);
-                        mrate_lot_multiplier *= learning.lot_mult;
-                        tracing::info!(
-                            "🧠 Learning: {} → conf={:.2}, lot_mult={:.2}x",
-                            learning.summary, signal_result.confidence, mrate_lot_multiplier
-                        );
-                    } else {
-                        tracing::debug!("🧠 Learning: {}", learning.summary);
-                    }
-                    
-                    // Re-check confidence after learning adjustment — may have dropped below threshold
-                    if signal_result.confidence < 0.50 {
-                        let _ = log_activity(&self.pool, self.bot_id, ActivityType::Info,
-                            &format!("🧠 Learning dropped confidence to {:.2} (below 0.50 threshold) — skipping trade", 
-                                signal_result.confidence), 
-                            Some(serde_json::json!({
-                                "learning_summary": learning.summary,
-                                "win_rate": learning.win_rate,
-                                "profit_factor": learning.profit_factor,
-                            }))).await;
-                        continue;
-                    }
-                    
-                    }
-
+                let learning = calculate_learning_multiplier(
+                    &self.pool, self.bot_id, regime_str, session_str
+                ).await;
+                
+                if learning.has_sufficient_data {
+                    signal_result.confidence = (signal_result.confidence * learning.confidence_mult).clamp(0.0, 1.0);
+                    mrate_lot_multiplier *= learning.lot_mult;
+                    tracing::info!(
+                        "🧠 Learning: {} → conf={:.2}, lot_mult={:.2}x",
+                        learning.summary, signal_result.confidence, mrate_lot_multiplier
+                    );
+                } else {
+                    tracing::debug!("🧠 Learning: {}", learning.summary);
+                }
+                
+                // Re-check confidence after learning adjustment — may have dropped below threshold
+                if signal_result.confidence < 0.50 {
+                    let _ = log_activity(&self.pool, self.bot_id, ActivityType::Info,
+                        &format!("🧠 Learning dropped confidence to {:.2} (below 0.50 threshold) — skipping trade", 
+                            signal_result.confidence), 
+                        Some(serde_json::json!({
+                            "learning_summary": learning.summary,
+                            "win_rate": learning.win_rate,
+                            "profit_factor": learning.profit_factor,
+                        }))).await;
+                    continue;
+                }
+                
                 // ═══════════════════════════════════════════════════════════════════
                 // PORTFOLIO RISK ENGINE - THE KILL SWITCH
                 // ═══════════════════════════════════════════════════════════════════
@@ -828,7 +788,7 @@ impl BotRunner {
                 // Calculate adjusted lot size with MRATE + Risk multipliers
                 // Intraday boost: tighter stops → proportionally larger lots
                 // so risk per trade stays consistent across timeframes.
-                let intraday_lot_boost = if mrate_enabled && tf_tier.is_intraday() {
+                let intraday_lot_boost = if tf_tier.is_intraday() {
                     // Get D1 ATR and local ATR to calculate proportional boost
                     let d1_atr = mrate_output.instrument_scores.get_score(instrument)
                         .map(|s| s.d1_atr)
@@ -931,12 +891,8 @@ impl BotRunner {
                 
                 let (sl_price, tp_price, atr_value, stop_distance_pct, rr_ratio) = if use_atr_stops {
                     // Check if MRATE provides D1-based stop recommendations for this instrument
-                    let mrate_instrument_score = if mrate_enabled {
-                        mrate_output.instrument_scores.get_score(instrument)
-                    } else {
-                        None
-                    };
-                    let mrate_stop_available = mrate_enabled && use_d1_stops && mrate_instrument_score
+                    let mrate_instrument_score = mrate_output.instrument_scores.get_score(instrument);
+                    let mrate_stop_available = use_d1_stops && mrate_instrument_score
                         .map(|s| s.recommended_stop_distance > 0.0)
                         .unwrap_or(false);
                     
@@ -980,17 +936,9 @@ impl BotRunner {
                             .and_then(|v| v.as_f64())
                             .unwrap_or(2.0);  // 2.0x ATR for target (2:1 R:R)
                         
-                        // Apply MRATE DTE multipliers to ATR stops/TPs (only when enabled)
-                        let atr_sl_mult = if mrate_enabled {
-                            mrate_output.thresholds.adjust_stop_loss(base_atr_sl_mult)
-                        } else {
-                            base_atr_sl_mult
-                        };
-                        let atr_tp_mult = if mrate_enabled {
-                            mrate_output.thresholds.adjust_take_profit(base_atr_tp_mult)
-                        } else {
-                            base_atr_tp_mult
-                        };
+                        // Apply MRATE DTE multipliers to ATR stops/TPs
+                        let atr_sl_mult = mrate_output.thresholds.adjust_stop_loss(base_atr_sl_mult);
+                        let atr_tp_mult = mrate_output.thresholds.adjust_take_profit(base_atr_tp_mult);
                         
                         let trade_direction = if direction == "BUY" { "LONG" } else { "SHORT" };
                         let sl = crate::risk::calculator::calculate_atr_stop(
@@ -1134,7 +1082,7 @@ impl BotRunner {
                             adjusted_lot_size,
                             signal_result.confidence,
                             &signal_result.reason,
-                            if mrate_enabled { mrate_ref.cloned() } else { None },
+                            mrate_ref.cloned(),
                         ).await;
                         
                         if let Err(e) = trade_context_result {
@@ -1538,14 +1486,9 @@ impl BotRunner {
     ) {
         use crate::analytics::ensemble::{EnsembleEngine, ClusterId, MarketPattern};
         
-        // Get current regime from MRATE (observation only).
-        // If MRATE is disabled, do NOT use regime for clustering.
-        let regime = if crate::mrate::is_mrate_enabled(&self.pool).await {
-            let mrate = self.fetch_mrate().await.unwrap_or_else(default_mrate_output);
-            mrate.regime.as_str().to_string()
-        } else {
-            "NO_MRATE".to_string()
-        };
+        // Get current regime from MRATE
+        let mrate = self.fetch_mrate().await.unwrap_or_else(default_mrate_output);
+        let regime = mrate.regime.as_str().to_string();
         
         // Determine session
         let hour = chrono::Utc::now().hour();
